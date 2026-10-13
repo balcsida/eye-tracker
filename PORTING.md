@@ -82,11 +82,12 @@ before a task is done.
 | Numerics | `nalgebra` (regression, PnP), `ndarray` where an array API reads best |
 | Images | `image`, `fast_image_resize`, `imageproc` |
 | Inference | `tract-tflite` (face landmarks), `tract-onnx` (YuNet); fallback only if the spike fails: the `opencv` crate |
-| Camera | `nokhwa` (MSMF / AVFoundation / V4L2, MJPEG, 640×480); image files and frame directories replace video-file input |
+| Camera | `nokhwa` without default features (MSMF / AVFoundation / V4L2); MJPEG decoded with `image`; image files and frame directories replace video-file input |
 | UI | `egui` + `eframe` (hidden root viewport; dialogs, calibration, overlays and curtain are viewports) |
 | Tray | `tray-icon` on Windows/macOS, `ksni` on Linux |
 | Notifications | `notify-rust` |
-| Native dialogs | `rfd` |
+| File picker | `egui-file-dialog` (pure egui, every OS) |
+| Fatal error box | `rfd::MessageDialog` on Windows/macOS only; stderr plus a notification on Linux |
 | Global hotkeys | `global-hotkey` for registration where it fits; the layout and availability checks are ported directly |
 | IPC | `interprocess` local sockets (named pipes on Windows, Unix sockets elsewhere) |
 | Processes | `sysinfo`, `std::process` |

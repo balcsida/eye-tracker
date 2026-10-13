@@ -24,6 +24,7 @@ crossbeam-channel.workspace = true
 directories.workspace = true
 eframe.workspace = true
 egui.workspace = true
+egui-file-dialog.workspace = true
 fast_image_resize.workspace = true
 flexi_logger.workspace = true
 global-hotkey.workspace = true
@@ -37,7 +38,6 @@ ndarray.workspace = true
 nokhwa.workspace = true
 notify-rust.workspace = true
 parking_lot.workspace = true
-rfd.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha1.workspace = true
@@ -48,6 +48,7 @@ tract-onnx.workspace = true
 tract-tflite.workspace = true
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+rfd.workspace = true
 tray-icon.workspace = true
 
 [target.'cfg(unix)'.dependencies]
