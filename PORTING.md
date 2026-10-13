@@ -88,6 +88,9 @@ before a task is done.
 | Notifications | `notify-rust` |
 | File picker | `egui-file-dialog` (pure egui, every OS) |
 | Fatal error box | `rfd::MessageDialog` on Windows/macOS only; stderr plus a notification on Linux |
+| Monitors | `display-info` behind `platform::monitors()` |
+| Icon rasterising | `tiny-skia` |
+| Open a URL or folder | egui's `Context::open_url` (also for `file://` folders); never the `open`/`webbrowser` crates directly, the privacy gate forbids them |
 | Global hotkeys | `global-hotkey` for registration where it fits; the layout and availability checks are ported directly |
 | IPC | `interprocess` local sockets (named pipes on Windows, Unix sockets elsewhere) |
 | Processes | `sysinfo`, `std::process` |

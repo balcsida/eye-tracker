@@ -22,6 +22,7 @@ anyhow.workspace = true
 clap.workspace = true
 crossbeam-channel.workspace = true
 directories.workspace = true
+display-info.workspace = true
 eframe.workspace = true
 egui.workspace = true
 egui-file-dialog.workspace = true
@@ -44,6 +45,7 @@ sha1.workspace = true
 sha2.workspace = true
 sysinfo.workspace = true
 thiserror.workspace = true
+tiny-skia.workspace = true
 tract-onnx.workspace = true
 tract-tflite.workspace = true
 
