@@ -1,8 +1,8 @@
 // The Python suite has no test file for logging_setup.py; the tests below are new.
 // `setup_logging` itself (it starts the process-wide logger, which the unit tests of this crate
 // replace with a capturing one) is tested in tests/logging.rs. Not ported (nothing to port): the
-// Qt message handler (`install_qt_message_handler`), the OpenCV and `cv2` log-level handling,
-// `captureWarnings` and the noisy third-party logger levels.
+// Qt message handler (`install_qt_message_handler`), the OpenCV and `cv2` log-level handling
+// and `captureWarnings`.
 
 use super::*;
 
@@ -25,6 +25,17 @@ fn test_parse_level() {
         LevelFilter::Warn
     );
     assert_eq!(parse_level(None, LevelFilter::Info), LevelFilter::Info);
+}
+
+#[test]
+fn test_debug_keeps_the_app_and_quietens_libraries() {
+    let spec = log_specification(LevelFilter::Debug);
+    assert!(spec.enabled(log::Level::Debug, "eye_tracker::engine"));
+    assert!(!spec.enabled(log::Level::Debug, "tract_core::ops"));
+    assert!(spec.enabled(log::Level::Warn, "tract_core::ops"));
+    assert!(!spec.enabled(log::Level::Info, "wgpu_hal::vulkan"));
+    assert!(spec.enabled(log::Level::Info, "zbus::connection"));
+    assert!(!spec.enabled(log::Level::Debug, "zbus::connection"));
 }
 
 #[test]

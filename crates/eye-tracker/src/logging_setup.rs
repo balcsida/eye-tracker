@@ -133,7 +133,7 @@ pub fn shutdown_logging() {
 
 fn start_logger(level: LevelFilter) -> State {
     let sinks = Arc::new(RwLock::new(Sinks::default()));
-    let started = Logger::with(LogSpecification::builder().default(level).build())
+    let started = Logger::with(log_specification(level))
         .log_to_writer(Box::new(SwitchWriter(sinks.clone())))
         .start();
     let handle = match started {
@@ -147,9 +147,23 @@ fn start_logger(level: LevelFilter) -> State {
     State { handle, sinks }
 }
 
+/// The app's own crate (and both binaries) log at `level`; every other crate at most at `Info`,
+/// and tract and wgpu at most at `Warn`: at `DEBUG` they write about 1 MB per second and the
+/// rotation would push the app's own lines out within seconds.
+fn log_specification(level: LevelFilter) -> LogSpecification {
+    let libraries = level.min(LevelFilter::Info);
+    let chatty_libraries = level.min(LevelFilter::Warn);
+    LogSpecification::builder()
+        .default(libraries)
+        .module("eye_tracker", level)
+        .module("tract", chatty_libraries)
+        .module("wgpu", chatty_libraries)
+        .build()
+}
+
 fn apply_level(state: &State, level: LevelFilter) {
     if let Some(handle) = &state.handle {
-        handle.set_new_spec(LogSpecification::builder().default(level).build());
+        handle.set_new_spec(log_specification(level));
     }
 }
 

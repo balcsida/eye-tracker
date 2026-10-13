@@ -15,9 +15,9 @@ fn test_log_lines_and_panics_reach_the_file() {
     paths::set_base_override(Some(tmp.path()));
     logging_setup::setup_logging("INFO", false, true);
     log::warn!(target: "eye_tracker::config", "hello {}", 42);
-    log::debug!("below the level");
+    log::debug!(target: "eye_tracker::config", "below the level");
     logging_setup::set_level("DEBUG");
-    log::debug!("above the level now");
+    log::debug!(target: "eye_tracker::config", "above the level now");
     let _ = std::thread::Builder::new()
         .name("worker-x".into())
         .spawn(|| panic!("boom"))
