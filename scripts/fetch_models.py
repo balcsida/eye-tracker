@@ -4,7 +4,7 @@
 The models are committed to the repository, so most people never need to run
 this. It exists to recreate them in a fresh or damaged checkout, to verify them
 in CI, and to record exactly where each file comes from and under which licence
-(see also ``src/eye_tracker/vision/models/NOTICE.md``).
+(see also ``crates/eye-tracker/models/NOTICE.md``).
 
 Usage::
 
@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DEST = REPO_ROOT / "src" / "eye_tracker" / "vision" / "models"
+DEFAULT_DEST = REPO_ROOT / "crates" / "eye-tracker" / "models"
 USER_AGENT = "eye-tracker-fetch-models/1.0 (+https://github.com/bugraskl/eye-tracker)"
 
 #: Refuse absurdly large responses (the real files are a few MiB).

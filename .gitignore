@@ -38,3 +38,7 @@ _site/
 .impeccable/
 PRODUCT.md
 DESIGN.md
+
+# Rust
+/target
+/crates/eye-tracker/models/*.tmp
