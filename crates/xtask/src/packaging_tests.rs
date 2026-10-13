@@ -655,7 +655,6 @@ fn plist_value(plist: &Path, key: &str) -> String {
 fn test_make_app_assembles_the_bundle() {
     let dir = tempfile::tempdir().unwrap();
     let bin = dir.path().join("release");
-    executable(&bin.join("eye-tracker-gui"), "#!/bin/sh\n");
     executable(&bin.join("eye-tracker"), "#!/bin/sh\n");
     let app = dir.path().join("out/Eye Tracker.app");
     let output = bash(
@@ -676,7 +675,10 @@ fn test_make_app_assembles_the_bundle() {
     );
     // The names cli_command and app_command look for.
     assert!(app.join("Contents/MacOS/Eye Tracker").is_file());
-    assert!(app.join("Contents/MacOS/eye-tracker-cli").is_file());
+    // One executable: the CLI name is a relative symlink to the app's.
+    let cli = app.join("Contents/MacOS/eye-tracker-cli");
+    assert_eq!(std::fs::read_link(&cli).unwrap(), Path::new("Eye Tracker"));
+    assert!(cli.is_file());
     assert!(app.join("Contents/Resources/eye-tracker.icns").is_file());
     assert!(app.join("Contents/Resources/NOTICE.md").is_file());
     assert!(app.join("Contents/Resources/licenses").is_dir());
@@ -740,7 +742,7 @@ fn test_shell_scripts_use_lf_line_endings() {
 fn test_script_help_prints_the_whole_header() {
     for (path, range) in [
         ("packaging/linux/build_appimage.sh", "2,28"),
-        ("packaging/macos/make_app.sh", "2,20"),
+        ("packaging/macos/make_app.sh", "2,22"),
         ("packaging/macos/make_dmg.sh", "2,25"),
     ] {
         let text = read(path);

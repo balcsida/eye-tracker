@@ -8,11 +8,13 @@
 # Defaults: --bin-dir $CARGO_TARGET_DIR/release (or target/release), --out dist/Eye Tracker.app,
 # --version from the workspace Cargo.toml.
 #
-# The app holds both executables of the build:
-#   Contents/MacOS/Eye Tracker       the windowed menu-bar app (eye-tracker-gui)
-#   Contents/MacOS/eye-tracker-cli   the command-line tool (eye-tracker)
-# The names are the ones cli_command and app_command in crates/eye-tracker/src/cli.rs look for.
-# The face models are compiled into the executables; their NOTICE.md and licence texts go to
+# The app holds one executable, the eye-tracker binary, under the two names that cli_command and
+# app_command in crates/eye-tracker/src/cli.rs look for:
+#   Contents/MacOS/Eye Tracker       the menu-bar app (Finder starts this one)
+#   Contents/MacOS/eye-tracker-cli   a relative symlink to it, the command-line tool
+# eye-tracker-gui differs from eye-tracker only on Windows (windowed subsystem), so it is not
+# needed here.
+# The face models are compiled into the executable; their NOTICE.md and licence texts go to
 # Contents/Resources, next to the project's LICENSE.
 #
 # The oldest macOS the app runs on is $MACOS_MINIMUM (default 14.0); the same value should be
@@ -33,7 +35,7 @@ while [[ $# -gt 0 ]]; do
     --bin-dir) BIN_DIR="${2:?--bin-dir needs a path}"; shift 2 ;;
     --out) APP="${2:?--out needs a path}"; shift 2 ;;
     --version) VERSION="${2:?--version needs a value}"; shift 2 ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -50,7 +52,6 @@ APP_ID="$(sed -n 's/^pub const APP_ID: &str = "\(.*\)";$/\1/p' "$ROOT/crates/eye
 
 MODELS="$ROOT/crates/eye-tracker/models"
 ICON="$ROOT/packaging/macos/eye-tracker.icns"
-[[ -x "$BIN_DIR/eye-tracker-gui" ]] || die "missing $BIN_DIR/eye-tracker-gui (run: cargo build --release)"
 [[ -x "$BIN_DIR/eye-tracker" ]] || die "missing $BIN_DIR/eye-tracker (run: cargo build --release)"
 [[ -f "$ICON" ]] || die "missing $ICON; run: cargo xtask make-icons"
 [[ -f "$MODELS/NOTICE.md" && -d "$MODELS/licenses" ]] || die "missing the models' NOTICE.md or licenses/ in $MODELS"
@@ -58,8 +59,8 @@ ICON="$ROOT/packaging/macos/eye-tracker.icns"
 echo "==> Assembling $APP ($VERSION)"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-install -m 755 "$BIN_DIR/eye-tracker-gui" "$APP/Contents/MacOS/Eye Tracker"
-install -m 755 "$BIN_DIR/eye-tracker" "$APP/Contents/MacOS/eye-tracker-cli"
+install -m 755 "$BIN_DIR/eye-tracker" "$APP/Contents/MacOS/Eye Tracker"
+ln -s "Eye Tracker" "$APP/Contents/MacOS/eye-tracker-cli"
 install -m 644 "$ICON" "$APP/Contents/Resources/eye-tracker.icns"
 install -m 644 "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE"
 install -m 644 "$MODELS/NOTICE.md" "$APP/Contents/Resources/NOTICE.md"
