@@ -84,6 +84,8 @@ windows = { version = "0.62.2", features = [
   "Win32_System_ProcessStatus",
   "Win32_System_LibraryLoader",
   "Win32_System_Shutdown",
+  "Win32_System_Ole",
+  "Win32_System_Variant",
 ] }
 objc2 = "0.6.5"
 objc2-foundation = "0.3.2"

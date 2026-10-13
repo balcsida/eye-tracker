@@ -15,7 +15,6 @@ pub mod hotkeys;
 pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
-#[cfg(target_os = "windows")]
 pub mod win_uia;
 // Not cfg-gated: only its Win32 binding is, so the policy tests run on every OS.
 pub mod windows;
