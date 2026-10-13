@@ -1,0 +1,43 @@
+diff -ru crates.io/tract-tflite-0.23.8/src/ops/nn.rs vendor/tract-tflite/src/ops/nn.rs
+--- crates.io/tract-tflite-0.23.8/src/ops/nn.rs	2006-07-24 03:21:28.000000000 +0200
++++ vendor/tract-tflite/src/ops/nn.rs	2026-10-13 15:38:30.021631071 +0200
+@@ -46,6 +46,9 @@
+ 
+     reg.reg_to_tract(BuiltinOperator::RELU, de_relu);
+     reg.reg_to_tract(BuiltinOperator::RELU6, de_relu6);
++    // vision-spike patch: float16 weights (DEQUANTIZE f16 -> f32) and PRELU.
++    reg.reg_to_tract(BuiltinOperator::DEQUANTIZE, de_dequantize_float);
++    reg.reg_to_tract(BuiltinOperator::PRELU, de_prelu);
+ 
+     reg.reg_to_tflite(ser_reduce);
+     reg.reg_to_tract(BuiltinOperator::REDUCE_MAX, |op| de_reduce(op, Reducer::Max));
+@@ -540,3 +543,29 @@
+         Ok(())
+     }
+ }
++
++// vision-spike patch: only the float flavour (float16 weights stored for an f32 graph).
++fn de_dequantize_float(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
++    let input = op.inputs[0];
++    let fact = op.ctx.target.outlet_fact(input)?.clone();
++    let to = op.output_facts[0].datum_type;
++    ensure!(fact.datum_type.is_float() && to.is_float(), "only float DEQUANTIZE is supported");
++    if let Some(k) = fact.konst {
++        let value = k.cast_to_dt(to)?.into_owned().into_arc_tensor();
++        return Ok(tvec!(op.ctx.target.add_const(op.prefix, value)?));
++    }
++    op.ctx.target.wire_node(op.prefix, Cast::new(to), &[input])
++}
++
++// vision-spike patch: prelu(x) = max(x, 0) + alpha * min(x, 0).
++fn de_prelu(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
++    let (x, alpha) = (op.inputs[0], op.inputs[1]);
++    let p = op.prefix;
++    let dt = op.ctx.target.outlet_fact(x)?.datum_type;
++    let zero = op.ctx.target.add_const(format!("{p}.zero"), tensor0(0f32).cast_to_dt(dt)?.into_owned())?;
++    let target = &mut *op.ctx.target;
++    let pos = wire_with_rank_broadcast(format!("{p}.pos"), target, core::math::max(), &[x, zero])?[0];
++    let neg = wire_with_rank_broadcast(format!("{p}.neg"), target, core::math::min(), &[x, zero])?[0];
++    let scaled = wire_with_rank_broadcast(format!("{p}.scaled"), target, core::math::mul(), &[alpha, neg])?[0];
++    wire_with_rank_broadcast(p, target, core::math::add(), &[pos, scaled])
++}

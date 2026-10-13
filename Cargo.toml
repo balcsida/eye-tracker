@@ -99,3 +99,8 @@ libc = "0.2"
 # Dev
 approx = "0.5"
 tempfile = "3.27.0"
+
+# Stock tract-tflite 0.23.8 lacks DEQUANTIZE (float16 weights) and PRELU, which the face landmark
+# model needs; vendor/tract-tflite.patch is the diff (tract's main had neither on 2026-10-13).
+[patch.crates-io]
+tract-tflite = { path = "vendor/tract-tflite" }

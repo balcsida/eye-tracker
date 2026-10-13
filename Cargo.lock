@@ -6134,8 +6134,6 @@ dependencies = [
 [[package]]
 name = "tract-tflite"
 version = "0.23.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89c1a6e4ea9c1d6b299df06b60f9cde40584d07d484f775344f509b375447dc1"
 dependencies = [
  "derive-new",
  "flatbuffers",
