@@ -38,10 +38,16 @@ pub fn get_platform() -> Arc<dyn PlatformServices> {
 
 /// The implementation for `system` (a `std::env::consts::OS` value), or the do-nothing one.
 fn create(system: &str) -> Arc<dyn PlatformServices> {
-    // TODO(port): "windows" => windows::WindowsPlatform, "macos" => macos::MacPlatform,
-    // "linux" => linux::LinuxPlatform, each with the Python's fallback: a constructor error logs
+    // TODO(port): "windows" => windows::WindowsPlatform and "linux" => linux::LinuxPlatform, each
+    // with the Python's fallback: a constructor error logs
     // "{system} integration unavailable ({err}); OS features are disabled" at WARN and returns
     // GenericPlatform. Add the arms when those modules are ported.
+    #[cfg(target_os = "macos")]
+    if system == "macos" {
+        // `MacPlatform::new` cannot fail: a missing framework only degrades the call that
+        // needs it, so there is no "integration unavailable" fallback to take.
+        return Arc::new(macos::MacPlatform::new());
+    }
     log::info!("No OS integration for {system:?}; OS features are disabled");
     Arc::new(GenericPlatform)
 }
