@@ -194,50 +194,10 @@ fn resolve(path: &Path) -> PathBuf {
 }
 
 /// SHA-1 as lowercase hex. Only used for non-secret fingerprints that must stay equal to the
-/// Python app's (`layout_signature`, `ipc_name`), hence no dependency for it.
+/// Python app's (`layout_signature`, `ipc_name`).
 pub(crate) fn sha1_hex(data: &[u8]) -> String {
-    let mut h: [u32; 5] = [
-        0x6745_2301,
-        0xEFCD_AB89,
-        0x98BA_DCFE,
-        0x1032_5476,
-        0xC3D2_E1F0,
-    ];
-    let mut msg = data.to_vec();
-    msg.push(0x80);
-    while msg.len() % 64 != 56 {
-        msg.push(0);
-    }
-    msg.extend_from_slice(&((data.len() as u64) * 8).to_be_bytes());
-    for block in msg.as_chunks::<64>().0 {
-        let mut w = [0u32; 80];
-        for (slot, word) in w.iter_mut().zip(block.as_chunks::<4>().0) {
-            *slot = u32::from_be_bytes(*word);
-        }
-        for i in 16..80 {
-            w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
-        }
-        let [mut a, mut b, mut c, mut d, mut e] = h;
-        for (i, wi) in w.iter().enumerate() {
-            let (f, k) = match i {
-                0..20 => ((b & c) | (!b & d), 0x5A82_7999),
-                20..40 => (b ^ c ^ d, 0x6ED9_EBA1),
-                40..60 => ((b & c) | (b & d) | (c & d), 0x8F1B_BCDC),
-                _ => (b ^ c ^ d, 0xCA62_C1D6),
-            };
-            let t = a
-                .rotate_left(5)
-                .wrapping_add(f)
-                .wrapping_add(e)
-                .wrapping_add(k)
-                .wrapping_add(*wi);
-            (e, d, c, b, a) = (d, c, b.rotate_left(30), a, t);
-        }
-        for (x, y) in h.iter_mut().zip([a, b, c, d, e]) {
-            *x = x.wrapping_add(y);
-        }
-    }
-    h.iter().map(|x| format!("{x:08x}")).collect()
+    use sha1::{Digest, Sha1};
+    hex::encode(Sha1::digest(data))
 }
 
 #[cfg(test)]

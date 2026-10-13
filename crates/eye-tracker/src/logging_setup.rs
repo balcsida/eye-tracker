@@ -159,12 +159,17 @@ fn open_log_file() -> Result<FileLogWriter, flexi_logger::FlexiLoggerError> {
         .basename(APP_SLUG)
         .suffix("log")
         .suppress_timestamp();
+    // An empty current infix keeps the live file named `eye-tracker.log` (`paths::log_file()`);
+    // only the rotated backups get a timestamp.
     FileLogWriter::builder(spec)
         .format(format_line)
         .append()
         .rotate(
             Criterion::Size(MAX_BYTES),
-            Naming::Numbers,
+            Naming::TimestampsCustomFormat {
+                current_infix: Some(""),
+                format: "r%Y-%m-%d_%H-%M-%S",
+            },
             Cleanup::KeepLogFiles(BACKUP_COUNT),
         )
         .try_build()

@@ -5,11 +5,8 @@ use std::fs;
 
 use eye_tracker::{logging_setup, paths};
 
-fn log_text(dir: &std::path::Path) -> String {
-    fs::read_dir(dir)
-        .unwrap()
-        .map(|e| fs::read_to_string(e.unwrap().path()).unwrap())
-        .collect()
+fn log_text() -> String {
+    fs::read_to_string(paths::log_file()).unwrap_or_default()
 }
 
 #[test]
@@ -27,7 +24,8 @@ fn test_log_lines_and_panics_reach_the_file() {
         .unwrap()
         .join();
     logging_setup::shutdown_logging();
-    let text = log_text(&tmp.path().join("logs"));
+    assert!(paths::log_file().is_file());
+    let text = log_text();
     assert!(
         text.contains(" WARNING eye_tracker.config: hello 42"),
         "{text}"
@@ -39,5 +37,5 @@ fn test_log_lines_and_panics_reach_the_file() {
     );
     // After shutdown nothing more is written.
     log::error!("after shutdown");
-    assert!(!log_text(&tmp.path().join("logs")).contains("after shutdown"));
+    assert!(!log_text().contains("after shutdown"));
 }

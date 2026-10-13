@@ -1,6 +1,8 @@
 //! Shared test helpers (ports of tests/conftest.py, gaze_synth.py, face_drawing.py and
 //! panes_fakes.py as they are needed).
 
+pub(crate) mod face_drawing;
+
 use std::path::Path;
 
 use parking_lot::{Mutex, MutexGuard};
