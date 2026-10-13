@@ -1138,6 +1138,8 @@ fn send_notification(title: &str, message: &str, critical: bool) {
     let spawned = std::thread::Builder::new()
         .name("notification".to_string())
         .spawn(move || {
+            #[cfg(target_os = "macos")]
+            set_notification_application();
             if let Err(error) = notification.show() {
                 log::warn!("Could not show a notification: {error}");
             }
@@ -1145,6 +1147,31 @@ fn send_notification(title: &str, message: &str, critical: bool) {
     if let Err(error) = spawned {
         log::warn!("Could not start the notification thread: {error}");
     }
+}
+
+/// Tell notify-rust which app the notifications come from, once. Left alone, it asks AppleScript
+/// for the app "use_default" and macOS shows a "Where is use_default?" chooser instead.
+///
+/// It cannot be retried (notify-rust sets it once, even on failure), so it is chosen up front:
+/// the app's identifier inside its bundle, Terminal's (as notify-rust suggests) for a bare
+/// binary, which has no identifier macOS knows.
+#[cfg(target_os = "macos")]
+fn set_notification_application() {
+    static SET: std::sync::Once = std::sync::Once::new();
+    SET.call_once(|| {
+        let in_bundle = objc2_foundation::NSBundle::mainBundle()
+            .bundleIdentifier()
+            .is_some_and(|id| id.to_string() == crate::APP_ID);
+        let bundle = if in_bundle {
+            crate::APP_ID
+        } else {
+            "com.apple.Terminal"
+        };
+        match notify_rust::set_application(bundle) {
+            Ok(()) => log::debug!("Notifications are sent as {bundle}"),
+            Err(error) => log::warn!("Could not send notifications as {bundle}: {error}"),
+        }
+    });
 }
 
 /// The coloured dot in front of the status line (16 × 16, straight-alpha RGBA).
