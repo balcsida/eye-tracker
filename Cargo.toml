@@ -41,7 +41,8 @@ nokhwa = { version = "0.10.11", default-features = false, features = ["input-nat
 egui = "0.36.2"
 eframe = "0.36.2"
 tray-icon = "0.26.1"
-ksni = "0.3.6"
+# blocking: the async API needs a tokio runtime, which the app does not have.
+ksni = { version = "0.3.6", features = ["blocking"] }
 notify-rust = "4.18.2"
 # rfd only on Windows/macOS (its Linux backend needs GTK), and only for the fatal error box;
 # file picking is egui-file-dialog everywhere.
