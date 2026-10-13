@@ -3,6 +3,7 @@
 
 pub(crate) mod face_drawing;
 pub(crate) mod gaze_synth;
+pub(crate) mod panes_fakes;
 
 use std::path::Path;
 
