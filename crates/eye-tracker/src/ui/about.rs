@@ -30,18 +30,18 @@ while the screen is locked.";
 const PRIVACY_DOCS: &str = "the privacy documentation";
 
 /// (component, licence, what it is used for, homepage)
-pub const THIRD_PARTY: [(&str, &str, &str, &str); 9] = [
+pub const THIRD_PARTY: [(&str, &str, &str, &str); 14] = [
     (
-        "Qt 6 / PySide6",
-        "LGPL-3.0",
+        "egui and eframe",
+        "MIT OR Apache-2.0",
         "User interface",
-        "https://www.qt.io/qt-for-python",
+        "https://github.com/emilk/egui",
     ),
     (
-        "OpenCV",
-        "Apache-2.0",
-        "Camera capture, image processing and running the face models (DNN module)",
-        "https://opencv.org",
+        "tract",
+        "MIT OR Apache-2.0",
+        "Runs the face models",
+        "https://github.com/sonos/tract",
     ),
     (
         "MediaPipe Face Landmarker model",
@@ -57,41 +57,70 @@ pub const THIRD_PARTY: [(&str, &str, &str, &str); 9] = [
         "https://github.com/opencv/opencv_zoo",
     ),
     (
-        "NumPy",
-        "BSD-3-Clause",
-        "Numerical computing",
-        "https://numpy.org",
+        "nokhwa",
+        "Apache-2.0",
+        "Camera capture",
+        "https://github.com/l1npengtul/nokhwa",
     ),
     (
-        "platformdirs",
+        "image",
+        "MIT OR Apache-2.0",
+        "Image processing",
+        "https://github.com/image-rs/image",
+    ),
+    (
+        "imageproc",
         "MIT",
-        "Per-user folders",
-        "https://github.com/tox-dev/platformdirs",
+        "Image processing",
+        "https://github.com/image-rs/imageproc",
     ),
     (
-        "psutil",
-        "BSD-3-Clause",
-        "Process and CPU information",
-        "https://github.com/giampaolo/psutil",
+        "tray-icon (Windows, macOS)",
+        "MIT OR Apache-2.0",
+        "Tray icon and menu",
+        "https://github.com/tauri-apps/tray-icon",
     ),
     (
-        "python-xlib (Linux)",
-        "LGPL-2.1-or-later",
-        "X11 window focus and hotkeys",
-        "https://github.com/python-xlib/python-xlib",
+        "ksni (Linux)",
+        "Unlicense",
+        "Tray icon and menu",
+        "https://github.com/iovxw/ksni",
     ),
     (
-        "PyObjC (macOS)",
+        "notify-rust",
+        "MIT OR Apache-2.0",
+        "Notifications",
+        "https://github.com/hoodie/notify-rust",
+    ),
+    (
+        "windows (Windows)",
+        "MIT OR Apache-2.0",
+        "Windows system integration",
+        "https://github.com/microsoft/windows-rs",
+    ),
+    (
+        "objc2 (macOS)",
         "MIT",
         "macOS system integration",
-        "https://github.com/ronaldoussoren/pyobjc",
+        "https://github.com/madsmtm/objc2",
+    ),
+    (
+        "x11rb (Linux)",
+        "MIT OR Apache-2.0",
+        "X11 window focus and hotkeys",
+        "https://github.com/psychon/x11rb",
+    ),
+    (
+        "zbus (Linux)",
+        "MIT",
+        "D-Bus system integration",
+        "https://github.com/dbus2/zbus",
     ),
 ];
 
 /// The paragraph under the third-party table.
 pub const NOTICES_NOTE: &str = "Each component is used under its own licence; the licence texts ship with \
-the packages. Qt is linked dynamically and can be replaced, as the LGPL requires. \
-The trained models are redistributed unmodified (their origin and checksums are \
+the packages. The trained models are redistributed unmodified (their origin and checksums are \
 listed in the models' NOTICE file).";
 
 /// One line with the versions that matter for bug reports.

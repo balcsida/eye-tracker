@@ -23,13 +23,17 @@ fn test_about_dialog() {
     for needle in [
         "MediaPipe",
         "YuNet",
-        "OpenCV",
-        "Qt 6",
-        "LGPL-3.0",
+        "tract",
+        "egui and eframe",
+        "nokhwa",
+        "MIT OR Apache-2.0",
         "Apache-2.0",
         "MIT",
     ] {
         assert!(notices.contains(needle), "{needle}");
+    }
+    for needle in ["Qt", "PySide6", "NumPy", "psutil", "PyObjC"] {
+        assert!(!notices.contains(needle), "{needle}");
     }
     // Only the MediaPipe models are shipped (run by OpenCV), not its runtime.
     assert!(notices.contains("MediaPipe Face Landmarker model"));
