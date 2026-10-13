@@ -44,7 +44,9 @@ tract-onnx = "0.23.8"
 nokhwa = { version = "0.10.11", default-features = false, features = ["input-native"] }
 # UI
 egui = "0.36.2"
-eframe = "0.36.2"
+# glow instead of the default wgpu: one renderer is enough and wgpu is much larger. No accesskit
+# and web_screen_reader (web only).
+eframe = { version = "0.36.2", default-features = false, features = ["default_fonts", "glow", "links", "wayland", "x11"] }
 tray-icon = "0.26.1"
 # blocking: the async API needs a tokio runtime, which the app does not have.
 ksni = { version = "0.3.6", features = ["blocking"] }

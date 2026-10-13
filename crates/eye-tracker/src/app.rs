@@ -2539,7 +2539,7 @@ impl eframe::App for Runner<'_> {
         [0.0; 4]
     }
 
-    fn on_exit(&mut self) {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.context.shutdown();
     }
 }
