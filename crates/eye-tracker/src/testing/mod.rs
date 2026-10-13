@@ -2,6 +2,7 @@
 //! panes_fakes.py as they are needed).
 
 pub(crate) mod face_drawing;
+pub(crate) mod gaze_synth;
 
 use std::path::Path;
 
