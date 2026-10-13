@@ -1254,8 +1254,13 @@ impl EyeTrackerApp {
                 self.after_quiet_period(Timer::PromptSetup);
                 setup_offered = true; // the setup offers the calibration itself
             } else {
-                self.open_wizard();
-                return; // the wizard offers the calibration itself
+                match catch_unwind(AssertUnwindSafe(|| self.open_wizard())) {
+                    Ok(()) => return, // the wizard offers the calibration itself
+                    Err(panic) => log::error!(
+                        "The first-run wizard could not be opened: {}",
+                        panic_text(panic.as_ref())
+                    ),
+                }
             }
         }
         if self.options.calibrate {
