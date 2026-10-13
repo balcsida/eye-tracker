@@ -148,6 +148,28 @@ The spike project at `/tmp/eye-tracker-port/spike` (report:
   check that NV12 frames decode correctly (nokhwa maps `420v`/`420f` to YUYV, which may be wrong).
   Pick the device by the configured name, never blindly index 0 (Continuity Camera comes first).
 
+## UI seam (egui)
+
+- A UI module never holds the controller. It exposes `show(ctx: &egui::Context, inputs: &XInputs)
+  -> Vec<XAction>` (one `XInputs` struct of the plain values the Python widget read from the
+  controller and the settings, one `XAction` enum of what it would have called), and `app.rs` maps
+  actions to controller calls and feeds inputs from controller state. Module-local types only; no
+  shared `ControllerView`.
+- Fullscreen and overlay windows (calibration, gaze dot, curtain, countdown toast) are immediate
+  viewports (`ctx.show_viewport_immediate`) built from the monitor's `Rect`: borderless, positioned
+  at the monitor origin, sized to it, always on top; the dot and the toast are click-through
+  (`with_mouse_passthrough`) and transparent. Dialogs (settings, wizard, about, update, preview) are
+  viewports with decorations.
+- Monitors come from the `display-info` crate behind `platform::monitors() -> Vec<Monitor>`, primary
+  first, in the Python's order; the controller polls it once a second for hotplug (replacing the Qt
+  screen signals). The cursor position is `PlatformServices::cursor_position()`.
+- Icons (tray states, app icon, notification icon) are rasterised with `tiny-skia` into RGBA, as
+  `icons.py` drew them with QPainter.
+- Tray: `tray-icon` with its `muda` menu on Windows and macOS, `ksni` on Linux, behind one `Tray`
+  type whose menu clicks come back as a `TrayAction` enum.
+- Text in the UI stays word for word as the Python had it (the inventory in
+  `/tmp/eye-tracker-port/notes/ui.md` lists it).
+
 ## Threads
 
 | Thread | Owns |
