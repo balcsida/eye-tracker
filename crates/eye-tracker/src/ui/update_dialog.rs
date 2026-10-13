@@ -4,6 +4,7 @@
 //! and sends the user's choices back to it as [`UpdateAction`]s; closing it never stops a
 //! running check (a download has its own Cancel button).
 
+use super::icons;
 use crate::update::release::releases_page;
 use crate::update::service::{Phase, UpdateState};
 use crate::{APP_NAME, VERSION};
@@ -220,10 +221,12 @@ impl UpdateDialog {
             return Vec::new();
         }
         let view = update_view(inputs.state, inputs.can_install);
-        let builder = egui::ViewportBuilder::default()
-            .with_title(format!("{APP_NAME} updates"))
-            .with_inner_size([460.0, 200.0])
-            .with_min_inner_size([440.0, 160.0]);
+        let builder = icons::with_app_icon(
+            egui::ViewportBuilder::default()
+                .with_title(format!("{APP_NAME} updates"))
+                .with_inner_size([460.0, 200.0])
+                .with_min_inner_size([440.0, 160.0]),
+        );
         let mut chosen = None;
         ctx.show_viewport_immediate(
             egui::ViewportId::from_hash_of("eye-tracker-updates"),

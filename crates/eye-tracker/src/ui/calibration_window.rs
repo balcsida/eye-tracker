@@ -46,6 +46,7 @@ use std::time::Duration;
 use crossbeam_channel::{Receiver, TryRecvError};
 use egui::{Color32, Pos2, Rect as UiRect, Stroke, Vec2};
 
+use super::icons;
 use crate::gaze::calibration::{
     CalibrationCollector, CalibrationError, CalibrationReport, CalibrationSample,
     CalibrationTarget, CollectorOptions, Event, Phase, evaluate, make_plan,
@@ -600,14 +601,16 @@ impl Surface {
 /// as it.
 pub fn surface_viewport_builder(monitor: &Monitor) -> egui::ViewportBuilder {
     let rect = monitor.rect;
-    egui::ViewportBuilder::default()
-        .with_title("Eye Tracker — calibration")
-        .with_decorations(false)
-        .with_always_on_top()
-        .with_transparent(true)
-        .with_resizable(false)
-        .with_position(Pos2::new(rect.x as f32, rect.y as f32))
-        .with_inner_size(Vec2::new(rect.w as f32, rect.h as f32))
+    icons::with_app_icon(
+        egui::ViewportBuilder::default()
+            .with_title("Eye Tracker — calibration")
+            .with_decorations(false)
+            .with_always_on_top()
+            .with_transparent(true)
+            .with_resizable(false)
+            .with_position(Pos2::new(rect.x as f32, rect.y as f32))
+            .with_inner_size(Vec2::new(rect.w as f32, rect.h as f32)),
+    )
 }
 
 // ================================================================== window

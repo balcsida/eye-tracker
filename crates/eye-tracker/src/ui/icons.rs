@@ -665,6 +665,14 @@ pub fn app_icon() -> Arc<IconSet> {
     icon
 }
 
+/// `builder` with the application icon as the window icon.
+pub fn with_app_icon(builder: egui::ViewportBuilder) -> egui::ViewportBuilder {
+    match app_icon().best(256) {
+        Some(image) => builder.with_icon(image.to_icon_data()),
+        None => builder,
+    }
+}
+
 // --------------------------------------------------------------------- small glyphs
 /// Draw a padlock filling the rectangle (`x`, `y`, `w`, `h`) of `pixmap` in `color` (keyhole cut
 /// out, so any background shows).

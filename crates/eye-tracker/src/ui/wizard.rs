@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 use egui::{Color32, RichText};
 
+use super::icons;
 use super::settings_dialog::{
     CameraProbe, camera_in_use, camera_label, hint_label, meta, rich_text,
 };
@@ -792,10 +793,12 @@ impl FirstRunWizard {
     /// Draw the wizard in its own window; returns what it asks the controller to do.
     pub fn show(&mut self, ctx: &egui::Context, inputs: &WizardInputs) -> Vec<WizardAction> {
         self.poll_cameras();
-        let builder = egui::ViewportBuilder::default()
-            .with_title(format!("{APP_NAME} setup"))
-            .with_inner_size([680.0, 600.0])
-            .with_min_inner_size([640.0, 560.0]);
+        let builder = icons::with_app_icon(
+            egui::ViewportBuilder::default()
+                .with_title(format!("{APP_NAME} setup"))
+                .with_inner_size([680.0, 600.0])
+                .with_min_inner_size([640.0, 560.0]),
+        );
         ctx.show_viewport_immediate(Self::viewport_id(), builder, |ui, _class| {
             self.draw(ui, inputs.now)
         });

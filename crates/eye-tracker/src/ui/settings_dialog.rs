@@ -27,6 +27,7 @@ use egui::text::LayoutJob;
 use egui::{RichText, TextFormat};
 use serde_json::Value;
 
+use super::icons;
 use super::util::egui_colors::{ACCENT, DANGER, WARNING};
 use crate::cli::cli_command_text;
 use crate::config::{SettingRow, Settings, describe_settings};
@@ -2452,10 +2453,12 @@ impl SettingsDialog {
     ) -> Vec<SettingsAction> {
         self.flush_deferred();
         self.poll_cameras();
-        let builder = egui::ViewportBuilder::default()
-            .with_title(format!("{APP_NAME} Settings"))
-            .with_inner_size([860.0, 640.0])
-            .with_min_inner_size([760.0, 540.0]);
+        let builder = icons::with_app_icon(
+            egui::ViewportBuilder::default()
+                .with_title(format!("{APP_NAME} Settings"))
+                .with_inner_size([860.0, 640.0])
+                .with_min_inner_size([760.0, 540.0]),
+        );
         ctx.show_viewport_immediate(Self::viewport_id(), builder, |ui, _class| {
             self.draw(ui, inputs)
         });
