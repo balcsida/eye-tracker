@@ -15,6 +15,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
     egui instead of Qt, so they look slightly different.
   - One program: no Qt, OpenCV or Python runtime is bundled any more. The two face models run on
     tract, a pure-Rust inference engine, inside the program, and the packages are much smaller.
+  - The macOS app holds one program instead of two copies of it, and the release builds are
+    optimised for size (link-time optimisation, no debug symbols, one graphics renderer, only the
+    image formats the app reads): the app went from 101 MB to 28 MB.
   - The camera setting (`camera.device`, `--camera`) accepts a photo or a folder of image frames for
     testing instead of video files. Webcams work as before.
   - The Windows update check and installer work as before.

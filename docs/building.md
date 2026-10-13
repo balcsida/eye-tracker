@@ -27,6 +27,11 @@ The result is two binaries and nothing else to ship: `eye-tracker` (the command 
 in the program, and there is no Qt, OpenCV or Python runtime to bundle. The packaging scripts below
 turn the binaries into the packages.
 
+The release profile (`[profile.release]` in the root `Cargo.toml`) uses fat LTO, one codegen unit
+and stripped symbols, which makes a release build take a few minutes longer (about 4 minutes on
+an M-series Mac) and the binary over a third smaller. The optimisation level stays at 3, because the
+face models' inference is the hot path, and panics still unwind, because the app catches them.
+
 Then run the privacy gate on the result. It reads every native binary and fails on telemetry
 markers, on networking libraries and on imported networking functions that are not on its reviewed
 allow-list ([how it works](privacy.md#the-privacy-gate)). The success line says how many native
@@ -44,7 +49,8 @@ contain networking code, exactly what it may link, and why; the gate prints thos
 Finally, `cargo xtask smoke-test-bundle --version X.Y.Z <command-line tool or AppImage>` starts a
 built bundle in a temporary configuration folder, without opening a camera, and checks `--version`,
 `ctl status` and `ctl quit`; the release workflow does this for each package the way users get it.
-The tool inside a macOS app is `Eye Tracker.app/Contents/MacOS/eye-tracker-cli`.
+The tool inside a macOS app is `Eye Tracker.app/Contents/MacOS/eye-tracker-cli`, a symbolic link to
+the app's own executable.
 
 ## Packages
 
@@ -94,7 +100,10 @@ bash packaging/macos/make_dmg.sh
 ```
 
 `make_app.sh` assembles `dist/Eye Tracker.app` from the release build (`--bin-dir`, `--out` and
-`--version` override the defaults; it needs the icon from `cargo xtask make-icons`); `make_dmg.sh`
+`--version` override the defaults; it needs the icon from `cargo xtask make-icons`). The app holds
+one executable, the console binary `eye-tracker` as `Contents/MacOS/Eye Tracker`, and
+`Contents/MacOS/eye-tracker-cli` is a relative symbolic link to it; `eye-tracker-gui` only differs
+on Windows, so it is not copied. `make_dmg.sh`
 signs it (`--identity`, `--keychain`) and builds `dist/EyeTracker-<version>-macos-<arch>.dmg`, running
 `make_app.sh` first when the app does not exist yet. The release workflow builds with
 `MACOSX_DEPLOYMENT_TARGET` set to its `MACOS_MINIMUM` (14.0), which `make_app.sh` also writes into
