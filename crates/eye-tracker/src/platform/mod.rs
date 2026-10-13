@@ -17,7 +17,7 @@ pub mod linux;
 pub mod macos;
 #[cfg(target_os = "windows")]
 pub mod win_uia;
-#[cfg(target_os = "windows")]
+// Not cfg-gated: only its Win32 binding is, so the policy tests run on every OS.
 pub mod windows;
 
 pub use base::{GenericPlatform, PlatformServices};
@@ -47,6 +47,10 @@ fn create(system: &str) -> Arc<dyn PlatformServices> {
         // `MacPlatform::new` cannot fail: a missing framework only degrades the call that
         // needs it, so there is no "integration unavailable" fallback to take.
         return Arc::new(macos::MacPlatform::new());
+    }
+    if system == "windows" {
+        // Never fails: the Win32 binding is created (and its failure logged) on first use.
+        return Arc::new(windows::WindowsPlatform::new());
     }
     log::info!("No OS integration for {system:?}; OS features are disabled");
     Arc::new(GenericPlatform)
