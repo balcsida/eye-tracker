@@ -1957,6 +1957,7 @@ mod win32 {
     const KEYBOARD_LAYOUTS_KEY: PCWSTR = w!(r"SYSTEM\CurrentControlSet\Control\Keyboard Layouts");
 
     pub(super) fn current_thread_id() -> u32 {
+        // SAFETY: no arguments or preconditions.
         unsafe { GetCurrentThreadId() }
     }
 
@@ -1964,12 +1965,14 @@ mod win32 {
     /// creates it.
     pub(super) fn create_message_queue() {
         let mut msg = MSG::default();
+        // SAFETY: `msg` is a valid, writable MSG for the call.
         let _ =
             unsafe { PeekMessageW(&mut msg, None, super::WM_USER, super::WM_USER, PM_NOREMOVE) };
     }
 
     /// `GetMessageW`: 0 on WM_QUIT, -1 on failure.
     pub(super) fn get_message(msg: &mut MSG) -> i32 {
+        // SAFETY: `msg` is a valid, writable MSG; no window filter.
         unsafe { GetMessageW(msg, None, 0, 0) }.0
     }
 
@@ -1978,16 +1981,19 @@ mod win32 {
     }
 
     pub(super) fn post_thread_message(thread_id: u32, message: u32, wparam: usize) -> bool {
+        // SAFETY: plain value arguments; an invalid thread id only makes the call fail.
         unsafe { PostThreadMessageW(thread_id, message, WPARAM(wparam), LPARAM(0)) }.is_ok()
     }
 
     /// `RegisterHotKey` with a NULL window; the Win32 error code on failure.
     pub(super) fn register_hotkey(id: u32, modifiers: u32, vk: u8) -> Result<(), u32> {
+        // SAFETY: NULL window (thread queue); plain value arguments.
         unsafe { RegisterHotKey(None, id as i32, HOT_KEY_MODIFIERS(modifiers), u32::from(vk)) }
             .map_err(|err| err.code().0 as u32 & 0xFFFF)
     }
 
     pub(super) fn unregister_hotkey(id: u32) {
+        // SAFETY: plain value arguments; an unknown id only makes the call fail.
         let _ = unsafe { UnregisterHotKey(None, id as i32) };
     }
 
@@ -1996,11 +2002,13 @@ mod win32 {
         let vk_scan = |ch: char| -> Result<i32, String> {
             let mut units = [0u16; 2];
             match ch.encode_utf16(&mut units) {
+                // SAFETY: plain value argument.
                 [unit] => Ok(i32::from(unsafe { VkKeyScanW(*unit) })),
                 _ => Ok(-1),
             }
         };
         let vk_to_scan = |vk: u8| -> Result<u32, String> {
+            // SAFETY: plain value arguments.
             Ok(unsafe { MapVirtualKeyW(u32::from(vk), MAP_VIRTUAL_KEY_TYPE(MAPVK_VK_TO_VSC)) })
         };
         win_virtual_key(key, Some(&vk_scan), Some(&vk_to_scan))
@@ -2016,9 +2024,11 @@ mod win32 {
     impl Win32LayoutApi for User32 {
         fn get_keyboard_layout_list(&self, handles: Option<&mut [isize]>) -> i32 {
             match handles {
+                // SAFETY: no buffer; the call only returns the number of layouts.
                 None => unsafe { GetKeyboardLayoutList(None) },
                 Some(handles) => {
                     let mut raw = vec![HKL::default(); handles.len()];
+                    // SAFETY: `raw` is a writable HKL buffer; its length is passed with it.
                     let count = unsafe { GetKeyboardLayoutList(Some(&mut raw)) };
                     for (out, h) in handles.iter_mut().zip(&raw) {
                         *out = h.0 as isize;
@@ -2029,6 +2039,7 @@ mod win32 {
         }
 
         fn map_virtual_key_ex(&self, code: u32, map_type: u32, handle: isize) -> u32 {
+            // SAFETY: plain value arguments; a stale layout handle only fails the call.
             unsafe { MapVirtualKeyExW(code, MAP_VIRTUAL_KEY_TYPE(map_type), hkl(handle)) }
         }
 
@@ -2041,10 +2052,13 @@ mod win32 {
             flags: u32,
             handle: isize,
         ) -> i32 {
+            // SAFETY: `state` is the 256 bytes of key state and `buf` a writable buffer whose
+            // length is passed with it; a stale layout handle only fails the call.
             unsafe { ToUnicodeEx(vk, scan, state, buf, flags, hkl(handle)) }
         }
 
         fn get_locale_info(&self, lcid: u32, lctype: u32, buf: &mut [u16]) -> i32 {
+            // SAFETY: `buf` is a writable buffer whose length is passed with it.
             unsafe { GetLocaleInfoW(lcid, lctype, Some(buf)) }
         }
 
@@ -2057,6 +2071,8 @@ mod win32 {
     fn reg_string(key: HKEY, subkey: &str, value: PCWSTR) -> Option<String> {
         let subkey = HSTRING::from(subkey);
         let mut size = 0u32;
+        // SAFETY: `subkey` (an HSTRING) and `value` (a `w!` literal) are NUL-terminated and
+        // outlive the call; only the size is requested, so there is no data buffer.
         let status = unsafe {
             RegGetValueW(
                 key,
@@ -2072,6 +2088,8 @@ mod win32 {
             return None;
         }
         let mut buf = vec![0u16; (size as usize).div_ceil(2)];
+        // SAFETY: `buf` holds at least `size` bytes (rounded up to whole u16 units), the size
+        // the first call reported; the strings are as above.
         let status = unsafe {
             RegGetValueW(
                 key,
@@ -2099,6 +2117,8 @@ mod win32 {
         let hkl = (hkl as u64 & 0xFFFF_FFFF) as u32;
         let device = hkl >> 16;
         let mut layouts = HKEY::default();
+        // SAFETY: `KEYBOARD_LAYOUTS_KEY` is a NUL-terminated literal; `layouts` receives the
+        // opened key, which is closed below.
         let status = unsafe {
             RegOpenKeyExW(
                 HKEY_LOCAL_MACHINE,
@@ -2117,6 +2137,8 @@ mod win32 {
             for index in 0.. {
                 let mut name = [0u16; 256];
                 let mut len = name.len() as u32;
+                // SAFETY: `layouts` is the open key; `name` is a writable buffer of `len` units
+                // and `len` is updated to the name's length; the optional outputs are omitted.
                 let status = unsafe {
                     RegEnumKeyExW(
                         layouts,
@@ -2149,6 +2171,7 @@ mod win32 {
             };
             reg_string(layouts, &klid, w!("Layout Text")).filter(|t| !t.is_empty())
         };
+        // SAFETY: `layouts` was opened above and is not used afterwards.
         let _ = unsafe { RegCloseKey(layouts) };
         text
     }
