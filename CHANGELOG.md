@@ -6,6 +6,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+
+- **Eye Tracker is rewritten in Rust.** The features, settings, hotkeys, command line, and the
+  settings, calibration and log files are the same, and an upgrade keeps your settings and
+  calibrations. What you will notice:
+  - The windows (settings, calibration, setup assistant, camera preview, overlays) are drawn with
+    egui instead of Qt, so they look slightly different.
+  - One program: no Qt, OpenCV or Python runtime is bundled any more. The two face models run on
+    tract, a pure-Rust inference engine, inside the program, and the packages are much smaller.
+  - The camera setting (`camera.device`, `--camera`) accepts a photo or a folder of image frames for
+    testing instead of video files. Webcams work as before.
+  - The Windows update check and installer work as before.
+  - The privacy gate was rewritten as `cargo xtask check-privacy`: it parses the Rust sources, reads
+    the dependency tree and scans every native binary of a release build, with reviewed allowances
+    for WinHTTP (the opt-in update check), egui's link opener and the D-Bus socket of the Linux tray.
+    See [privacy](docs/privacy.md#the-privacy-gate).
+  - Developer tooling is `cargo xtask` (privacy gate, models, icons, configuration reference,
+    website) instead of the Python scripts; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Known gaps
+
+- The Rust version has not yet been run on a real Windows machine or a real Linux desktop; it is
+  tested by its automated tests, on macOS, and by type-checking the Windows build and building the
+  Linux build in a container.
+- The application icons are redrawn by the Rust renderer, so they are not pixel-identical to the
+  earlier ones.
+
 ## [0.3.0] - 2026-10-02
 
 ### Added
