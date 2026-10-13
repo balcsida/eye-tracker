@@ -399,7 +399,9 @@ impl CountdownToast {
         let (title, hint) = (self.title_text(now), self.hint_text());
         let number = self.seconds_left(now).to_string();
         let id = ViewportId::from_hash_of("countdown-toast");
-        ctx.show_viewport_immediate(id, self.viewport_builder(), |ui, _class| {
+        let builder = self.viewport_builder();
+        ctx.show_viewport_immediate(id, builder.clone(), |ui, _class| {
+            util::keep_viewport_placed(ui.ctx(), &builder);
             draw_toast(ui, &fonts, opacity, ring.as_ref(), &title, hint, &number);
         });
         let next = if opacity < 1.0 { 0.016 } else { TICK_S };

@@ -455,10 +455,11 @@ impl PrivacyCurtain {
             let id = CurtainWindow::viewport_id(index);
             let glow = self.glow_texture(ctx);
             let badge = self.badge_texture(ctx, &window);
-            let report =
-                ctx.show_viewport_immediate(id, window.viewport_builder(), |ui, _class| {
-                    draw_window(ui, &window, glow.as_ref(), badge.as_ref())
-                });
+            let builder = window.viewport_builder();
+            let report = ctx.show_viewport_immediate(id, builder.clone(), |ui, _class| {
+                util::keep_viewport_placed(ui.ctx(), &builder);
+                draw_window(ui, &window, glow.as_ref(), badge.as_ref())
+            });
             dismissed |= report.dismiss;
             if report.focused != window.focused {
                 focus_changes.push((index, report.focused));

@@ -504,6 +504,28 @@ pub fn place_viewport(builder: ViewportBuilder, rect: Rect, scale: f64) -> Viewp
         ))
 }
 
+/// Call while drawing a viewport whose `builder` has a position and an inner size (see
+/// [`place_viewport`]): puts the window back on that place when it is elsewhere. macOS moves a
+/// new borderless window into the visible frame of the main screen whatever place it was
+/// created with, and accepts the same place once the window exists.
+///
+/// shortcut: re-sent every frame for as long as the OS refuses the place (none seen so far);
+/// cap the attempts if one does.
+pub fn keep_viewport_placed(ctx: &egui::Context, builder: &ViewportBuilder) {
+    let (Some(position), Some(size)) = (builder.position, builder.inner_size) else {
+        return;
+    };
+    let Some(outer) = ctx.input(|i| i.viewport().outer_rect) else {
+        return;
+    };
+    // Half a point of slack: positions are rounded to physical pixels.
+    if outer.min.distance(position) > 0.5 || (outer.size() - size).length() > 0.5 {
+        log::debug!("Window at {outer:?}, moving it to {position:?} size {size:?}");
+        ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(position));
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+    }
+}
+
 /// A softer shade of the theme's text colour: readable on light and dark themes, unlike a
 /// disabled widget, and the text stays selectable.
 pub fn muted_color(ui: &egui::Ui, opacity: f32) -> Color32 {

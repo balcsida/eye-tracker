@@ -250,3 +250,51 @@ fn test_floating_viewports_never_take_focus_or_show_in_the_taskbar() {
     assert_eq!(placed.position, Some(Pos2::new(1280.0, 0.0)));
     assert_eq!(placed.inner_size, Some(Vec2::new(1280.0, 720.0)));
 }
+
+/// A window the OS put elsewhere is sent back to its place; one in place is left alone.
+#[test]
+fn test_keep_viewport_placed_moves_a_misplaced_window_back() {
+    let builder = place_viewport(
+        ViewportBuilder::default(),
+        Rect::new(832, 1080, 1728, 1117),
+        1.0,
+    );
+    let commands = |outer: egui::Rect| {
+        let mut input = egui::RawInput::default();
+        input
+            .viewports
+            .entry(egui::ViewportId::ROOT)
+            .or_default()
+            .outer_rect = Some(outer);
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(input, |ui| keep_viewport_placed(ui.ctx(), &builder));
+        output.textures_delta.clear();
+        output
+            .viewport_output
+            .remove(&egui::ViewportId::ROOT)
+            .map(|viewport| viewport.commands)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|command| {
+                matches!(
+                    command,
+                    egui::ViewportCommand::OuterPosition(_) | egui::ViewportCommand::InnerSize(_)
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    // Where macOS put it: into the main screen's visible frame.
+    let moved = commands(egui::Rect::from_min_size(
+        Pos2::new(832.0, 63.0),
+        Vec2::new(1728.0, 1017.0),
+    ));
+    assert_eq!(
+        moved,
+        [
+            egui::ViewportCommand::OuterPosition(Pos2::new(832.0, 1080.0)),
+            egui::ViewportCommand::InnerSize(Vec2::new(1728.0, 1117.0)),
+        ]
+    );
+    let placed = egui::Rect::from_min_size(Pos2::new(832.0, 1080.0), Vec2::new(1728.0, 1117.0));
+    assert!(commands(placed).is_empty());
+}

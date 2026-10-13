@@ -46,7 +46,7 @@ use std::time::Duration;
 use crossbeam_channel::{Receiver, TryRecvError};
 use egui::{Color32, Pos2, Rect as UiRect, Stroke, Vec2};
 
-use super::icons;
+use super::{icons, util};
 use crate::gaze::calibration::{
     CalibrationCollector, CalibrationError, CalibrationReport, CalibrationSample,
     CalibrationTarget, CollectorOptions, Event, Phase, evaluate, make_plan,
@@ -1633,11 +1633,11 @@ impl CalibrationWindow {
                 if n == 0 && self.focus_requested {
                     ctx.send_viewport_cmd_to(id, egui::ViewportCommand::Focus);
                 }
-                ctx.show_viewport_immediate(
-                    id,
-                    surface_viewport_builder(&surface.monitor),
-                    |ui, _class| draw_surface(ui, self, surface, inputs.now, &mut input),
-                );
+                let builder = surface_viewport_builder(&surface.monitor);
+                ctx.show_viewport_immediate(id, builder.clone(), |ui, _class| {
+                    util::keep_viewport_placed(ui.ctx(), &builder);
+                    draw_surface(ui, self, surface, inputs.now, &mut input);
+                });
             }
             self.focus_requested = false;
             ctx.request_repaint_after(Duration::from_millis(

@@ -429,7 +429,8 @@ impl GazeOverlay {
         let Some(texture) = window.texture_id(ctx) else {
             return;
         };
-        ctx.show_viewport_immediate(id, builder, |ui, _class| {
+        ctx.show_viewport_immediate(id, builder.clone(), |ui, _class| {
+            util::keep_viewport_placed(ui.ctx(), &builder);
             let rect = ui.max_rect();
             ui.painter().image(
                 texture,
