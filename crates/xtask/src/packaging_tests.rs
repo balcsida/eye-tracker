@@ -416,6 +416,9 @@ fn bash(script: &Path, args: &[&str], dir: &Path, envs: &[(&str, &str)]) -> std:
         .arg(script)
         .args(args)
         .current_dir(dir)
+        // The scripts look for the build in $CARGO_TARGET_DIR (set in a container), not in the
+        // fake repository.
+        .env_remove("CARGO_TARGET_DIR")
         .envs(envs.iter().copied())
         .output()
         .unwrap()
@@ -520,7 +523,8 @@ fn test_build_appimage_verifies_its_downloads() {
     // The real pinned checksums do not match the fake downloads: refused, nothing kept.
     let failed = run(&[]);
     assert!(!failed.status.success());
-    assert!(String::from_utf8_lossy(&failed.stderr).contains("checksum mismatch"));
+    let stderr = String::from_utf8_lossy(&failed.stderr);
+    assert!(stderr.contains("checksum mismatch"), "{stderr}");
     let kept = fs::read_dir(repo.join("build/tools")).map_or(0, |d| d.count());
     assert_eq!(kept, 0);
 
