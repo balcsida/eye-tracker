@@ -41,20 +41,38 @@ The allow-list (`BUNDLE_ALLOWLIST` in
 [`crates/xtask/src/check_privacy.rs`](../crates/xtask/src/check_privacy.rs)) names each file that may
 contain networking code, exactly what it may link, and why; the gate prints those as notices.
 
-Finally, `cargo xtask smoke-test-bundle` starts a built bundle and checks that it runs; the release
-workflow does this for each package the way users get it.
+Finally, `cargo xtask smoke-test-bundle --version X.Y.Z <command-line tool or AppImage>` starts a
+built bundle in a temporary configuration folder, without opening a camera, and checks `--version`,
+`ctl status` and `ctl quit`; the release workflow does this for each package the way users get it.
+The tool inside a macOS app is `Eye Tracker.app/Contents/MacOS/eye-tracker-cli`.
 
 ## Packages
 
-The scripts live under `packaging/`; their headers describe their arguments.
+The scripts live under `packaging/`; their headers describe their arguments. Run them from the
+repository root after the common steps above. Every package is written to `dist/`.
 
 **Windows installer and portable ZIP**
+
+The installer script packs a bundle folder, `dist\EyeTracker`, which the build workflow assembles:
+the windowed app as `EyeTracker.exe`, the console tool as `eye-tracker-cli.exe`, and `NOTICE.md`,
+`LICENSE`, `eye-tracker.ico` and the `licenses` folder. The portable ZIP is that folder.
+
+```bash
+mkdir -p dist/EyeTracker
+cp target/release/eye-tracker-gui.exe dist/EyeTracker/EyeTracker.exe
+cp target/release/eye-tracker.exe dist/EyeTracker/eye-tracker-cli.exe
+cp crates/eye-tracker/models/NOTICE.md LICENSE packaging/windows/eye-tracker.ico dist/EyeTracker/
+cp -R crates/eye-tracker/models/licenses dist/EyeTracker/licenses
+(cd dist && 7z a -tzip -mx=9 EyeTracker-0.3.0-windows-x64-portable.zip EyeTracker)
+```
 
 ```powershell
 iscc /DAppVersion=0.3.0 packaging\windows\installer.iss
 ```
 
-The installer is per user (no administrator rights), creates a Start menu shortcut, and optionally
+This writes `dist\EyeTracker-0.3.0-windows-x64-setup.exe`. A version such as `0.3.0rc1` also needs
+`/DAppVersionNumeric=0.3.0` (the Windows file version must be numeric); `/DBundleDir` and
+`/DOutputDir` change the two folders. The installer is per user (no administrator rights), creates a Start menu shortcut, and optionally
 registers start at sign-in. It also installs the command-line tool and, with the task *Add the
 "eye-tracker" command to PATH* (on by default; `/MERGETASKS=!addtopath` turns it off in a silent
 install), adds the installation folder to the user's PATH; uninstalling removes that entry. A user
@@ -75,8 +93,12 @@ bash packaging/macos/make_app.sh
 bash packaging/macos/make_dmg.sh
 ```
 
-`make_app.sh` assembles `Eye Tracker.app` from the release build; `make_dmg.sh` signs it and builds
-the disk image. The app is signed ad hoc unless you provide a certificate. With a stable identity (a
+`make_app.sh` assembles `dist/Eye Tracker.app` from the release build (`--bin-dir`, `--out` and
+`--version` override the defaults; it needs the icon from `cargo xtask make-icons`); `make_dmg.sh`
+signs it (`--identity`, `--keychain`) and builds `dist/EyeTracker-<version>-macos-<arch>.dmg`, running
+`make_app.sh` first when the app does not exist yet. The release workflow builds with
+`MACOSX_DEPLOYMENT_TARGET` set to its `MACOS_MINIMUM` (14.0), which `make_app.sh` also writes into
+the Info.plist; do the same when you build for other Macs. The app is signed ad hoc unless you provide a certificate. With a stable identity (a
 Developer ID, or a self-signed certificate as described at the top of `make_dmg.sh`), the Camera and
 Accessibility permissions survive updates. In CI, set the repository secrets
 `MACOS_SIGNING_CERT_P12`, `MACOS_SIGNING_CERT_PASSWORD` and optionally `MACOS_SIGNING_IDENTITY`.
@@ -87,8 +109,10 @@ Accessibility permissions survive updates. In CI, set the repository secrets
 bash packaging/linux/build_appimage.sh
 ```
 
-`appimagetool` and the AppImage runtime are downloaded at pinned versions and verified against their
-SHA-256. Where FUSE is unavailable (containers, CI), export `APPIMAGE_EXTRACT_AND_RUN=1`.
+This writes `dist/EyeTracker-<version>-linux-<arch>.AppImage` and
+`dist/EyeTracker-<version>-linux-<arch>.tar.gz` (`--version`, `--dist` and `--binary` override the
+defaults). `appimagetool` and the AppImage runtime are downloaded (with `curl`) into `build/tools/` at
+pinned versions and verified against their SHA-256. Where FUSE is unavailable (containers, CI), export `APPIMAGE_EXTRACT_AND_RUN=1`.
 
 ## Cross-checking Windows from another system
 
@@ -126,9 +150,10 @@ so a build fails when one is missing.
 - [`build.yml`](../.github/workflows/build.yml) is the one definition of how the packages are
   built and tested. It is a reusable workflow, never run on its own: the Bundle check and the
   release both call it, so a pull request checks exactly what a release ships. It reads the version
-  and writes the release notes, then builds each platform on its own runner (`windows-latest`,
+  and writes the release notes (`packaging/release_notes.sh`), then builds each platform on its own runner (`windows-latest`,
   `macos-14`, and `ubuntu-22.04` for the oldest supported glibc):
-  - **every platform:** `cargo build --release`, the bundle privacy gate, the packages, and
+  - **every platform:** `cargo xtask fetch-models --check`, `cargo build --release`,
+    `cargo xtask make-icons`, the bundle privacy gate, the packages, and
     `cargo xtask smoke-test-bundle` on each package the way users get it;
   - **Windows:** the bundle (the portable ZIP's contents), then the installer, which a disposable
     runner installs, upgrades and uninstalls: start at sign-in after silent upgrades, with and
@@ -139,7 +164,9 @@ so a build fails when one is missing.
     image; the app is then checked inside the mounted image: no symbolic link without a target,
     `codesign --verify --deep --strict`, the Info.plist, and the smoke test of its
     `eye-tracker-cli`;
-  - **Linux:** the AppImage (smoke test) and the tarball (its links and its launcher).
+  - **Linux:** a check that the executable links no GTK or GIO library, the privacy gate on the
+    executable, the AppImage (smoke test) and the tarball (its version, `.desktop` file, `NOTICE.md`,
+    `licenses/` and links).
 - [`bundle.yml`](../.github/workflows/bundle.yml) runs `build.yml` whenever a pull request or a push
   to `main` changes the app (`crates/`), `packaging/`, `Cargo.toml`, `Cargo.lock` or the release workflows. It passes no secret (the macOS app
   is signed ad hoc), keeps no artifact and publishes nothing. Start it by hand on any branch with

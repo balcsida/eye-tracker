@@ -32,6 +32,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   Linux build in a container.
 - The application icons are redrawn by the Rust renderer, so they are not pixel-identical to the
   earlier ones.
+- Clicking a notification does nothing yet (the notification library reports no clicks), so the
+  calibration, setup, permission and update prompts open from the tray menu instead.
+- The images drawn in the overlays (the calibration dots and the countdown ring) are
+  approximations of the earlier ones.
 
 ## [0.3.0] - 2026-10-02
 
