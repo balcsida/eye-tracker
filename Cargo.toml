@@ -11,6 +11,13 @@ repository = "https://github.com/bugraskl/eye-tracker"
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "warn"
 
+# Smaller, faster binaries; opt-level stays 3 (tract inference) and panic stays "unwind" (the app
+# relies on catch_unwind).
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+
 [workspace.dependencies]
 # CLI, config, logging, errors
 clap = { version = "4.6.7", features = ["derive"] }
