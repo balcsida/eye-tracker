@@ -38,6 +38,7 @@ use serde_json::json;
 
 use crate::config::Settings;
 use crate::ipc::{Event, InstanceLock, InstanceServer};
+use crate::platform::autostart::AutostartError;
 use crate::testing::{AppDirs, app_dirs};
 
 use super::*;
@@ -313,7 +314,20 @@ impl AutostartBackend for FakeAutostart {
         self.0.supported.get()
     }
 
-    fn status(&self, config_dir: Option<&Path>) -> Status {
+    fn is_enabled(&self) -> bool {
+        self.0.enabled.get()
+    }
+
+    fn enable(&self, background: bool) -> Result<(), Box<dyn std::error::Error>> {
+        self.enable_for_profile(background, None)
+            .map_err(Into::into)
+    }
+
+    fn disable(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.disable_for_profile(None).map_err(Into::into)
+    }
+
+    fn status_for_profile(&self, config_dir: Option<&Path>) -> Status {
         self.0
             .profiles
             .borrow_mut()
@@ -325,7 +339,11 @@ impl AutostartBackend for FakeAutostart {
         }
     }
 
-    fn enable(&self, background: bool, config_dir: Option<&Path>) -> Result<(), AutostartError> {
+    fn enable_for_profile(
+        &self,
+        background: bool,
+        config_dir: Option<&Path>,
+    ) -> Result<(), AutostartError> {
         self.0
             .calls
             .borrow_mut()
@@ -341,7 +359,7 @@ impl AutostartBackend for FakeAutostart {
         Ok(())
     }
 
-    fn disable(&self, config_dir: Option<&Path>) -> Result<(), AutostartError> {
+    fn disable_for_profile(&self, config_dir: Option<&Path>) -> Result<(), AutostartError> {
         self.0.calls.borrow_mut().push("disable".to_string());
         self.0
             .profiles

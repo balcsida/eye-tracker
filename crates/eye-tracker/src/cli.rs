@@ -19,7 +19,7 @@ use crate::app::{self, RunArgs};
 use crate::config::Settings;
 use crate::diagnostics::{self, BenchOptions};
 use crate::logging_setup::{LEVELS, setup_logging};
-use crate::platform::autostart::{self, AutostartError, Status};
+use crate::platform::autostart::{AutostartBackend, Status, SystemAutostart};
 use crate::platform::base::which;
 use crate::{APP_NAME, APP_SLUG, VERSION, ipc, paths};
 
@@ -668,50 +668,6 @@ impl<'a> Env<'a> {
     }
 }
 
-/// The login entry functions the `autostart` command uses; tests replace them with a fake so the
-/// real login entry is never touched.
-trait AutostartBackend {
-    fn is_supported(&self) -> bool;
-    fn status(&self, config_dir: Option<&Path>) -> Status;
-    fn enable(&self, background: bool, config_dir: Option<&Path>) -> Result<(), AutostartError>;
-    fn disable(&self, config_dir: Option<&Path>) -> Result<(), AutostartError>;
-    fn location(&self) -> Option<String>;
-    fn registered_command(&self) -> Option<Vec<String>>;
-    fn launch_command(&self, background: bool, config_dir: Option<&Path>) -> Vec<String>;
-}
-
-struct SystemAutostart;
-
-impl AutostartBackend for SystemAutostart {
-    fn is_supported(&self) -> bool {
-        autostart::is_supported()
-    }
-
-    fn status(&self, config_dir: Option<&Path>) -> Status {
-        autostart::status(config_dir)
-    }
-
-    fn enable(&self, background: bool, config_dir: Option<&Path>) -> Result<(), AutostartError> {
-        autostart::enable(background, config_dir)
-    }
-
-    fn disable(&self, config_dir: Option<&Path>) -> Result<(), AutostartError> {
-        autostart::disable(config_dir)
-    }
-
-    fn location(&self) -> Option<String> {
-        autostart::location()
-    }
-
-    fn registered_command(&self) -> Option<Vec<String>> {
-        autostart::registered_command()
-    }
-
-    fn launch_command(&self, background: bool, config_dir: Option<&Path>) -> Vec<String> {
-        autostart::launch_command(background, config_dir)
-    }
-}
-
 /// Console entry point (`eye-tracker`). Returns the process exit code.
 pub fn main() -> i32 {
     main_from(std::env::args_os())
@@ -1021,7 +977,7 @@ fn cmd_autostart(env: &mut Env, global: &GlobalOptions, action: &str) -> i32 {
         if !backend.is_supported() {
             lines.push("Start at login: not supported on this system".to_string());
         } else {
-            let status = backend.status(profile);
+            let status = backend.status_for_profile(profile);
             // The value itself (enabled, disabled, stale, other-profile) is what scripts and bug
             // reports quote; the explanation says what to do.
             lines.push(format!("Start at login: {}", status.as_str()));
@@ -1050,15 +1006,15 @@ fn cmd_autostart(env: &mut Env, global: &GlobalOptions, action: &str) -> i32 {
         EXIT_ERROR
     } else {
         let done = if action == "enable" {
-            backend.enable(true, profile).map(|()| {
+            backend.enable_for_profile(true, profile).map(|()| {
                 format!(
                     "Start at login enabled ({}).",
                     backend.location().unwrap_or_default()
                 )
             })
         } else {
-            backend.disable(profile).map(|()| {
-                if backend.status(profile) == Status::OtherProfile {
+            backend.disable_for_profile(profile).map(|()| {
+                if backend.status_for_profile(profile) == Status::OtherProfile {
                     "Start at login starts another profile; left unchanged.".to_string()
                 } else {
                     "Start at login disabled.".to_string()

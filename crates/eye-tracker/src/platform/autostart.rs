@@ -282,6 +282,31 @@ pub trait AutostartBackend {
     fn refresh(&self) -> bool {
         false
     }
+    /// What the `autostart` command line tool needs on top: it acts on the profile given with
+    /// `--config-dir`, which the methods above (this process's profile) cannot express. The
+    /// defaults call the real login item; tests fake all of them.
+    fn status_for_profile(&self, config_dir: Option<&Path>) -> Status {
+        status(config_dir)
+    }
+    fn enable_for_profile(
+        &self,
+        background: bool,
+        config_dir: Option<&Path>,
+    ) -> Result<(), AutostartError> {
+        enable(background, config_dir)
+    }
+    fn disable_for_profile(&self, config_dir: Option<&Path>) -> Result<(), AutostartError> {
+        disable(config_dir)
+    }
+    fn location(&self) -> Option<String> {
+        location()
+    }
+    fn registered_command(&self) -> Option<Vec<String>> {
+        registered_command()
+    }
+    fn launch_command(&self, background: bool, config_dir: Option<&Path>) -> Vec<String> {
+        launch_command(background, config_dir)
+    }
 }
 
 /// The real login item of this process's settings profile.
