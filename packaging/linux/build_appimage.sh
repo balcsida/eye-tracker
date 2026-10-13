@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Package the Linux PyInstaller build as an AppImage and a tarball.
+# Package the Linux release build as an AppImage and a tarball.
 #
-# Usage (from the repository root, after PyInstaller):
-#   bash packaging/linux/build_appimage.sh [--version X.Y.Z] [--dist DIR]
+# Usage (from the repository root, after `cargo build --release` and `cargo xtask make-icons`):
+#   bash packaging/linux/build_appimage.sh [--version X.Y.Z] [--dist DIR] [--binary PATH]
 #        [--appimagetool PATH] [--runtime-file PATH] [--allow-unpinned]
 #
 # Writes to DIST (default: dist/):
 #   EyeTracker-<version>-linux-<arch>.AppImage
-#   EyeTracker-<version>-linux-<arch>.tar.gz   (eye-tracker/ with desktop file, icon, licence)
+#   EyeTracker-<version>-linux-<arch>.tar.gz   (eye-tracker/ with the executable, desktop file,
+#                                              icon, licence, models' NOTICE.md and licenses/)
 #
 # appimagetool is taken from --appimagetool, $APPIMAGETOOL or PATH; if none is
 # found, the pinned release below is downloaded into build/tools/ and verified
@@ -21,10 +22,10 @@
 # Set UPDATE_INFORMATION to embed AppImage update information; a .zsync file is
 # written next to the AppImage when appimagetool can produce one.
 #
-# Qt's X11 (xcb) platform plugin needs libxcb-cursor.so.0, which several
-# distributions do not install by default; it is copied into both packages from
-# the build machine if PyInstaller did not already collect it
-# (install it with: sudo apt install libxcb-cursor0).
+# --binary defaults to $CARGO_TARGET_DIR/release/eye-tracker (or target/release/eye-tracker). The
+# version defaults to the workspace Cargo.toml's. The face models are compiled into the
+# executable, so the packages hold no other library; the system's X11 or Wayland and
+# OpenGL libraries are loaded at run time.
 set -euo pipefail
 
 die() { echo "build_appimage: $*" >&2; exit 1; }
@@ -36,6 +37,7 @@ VERSION=""
 APPIMAGETOOL="${APPIMAGETOOL:-}"
 RUNTIME_FILE="${APPIMAGE_RUNTIME:-}"
 ALLOW_UNPINNED=0
+BINARY="${CARGO_TARGET_DIR:-$ROOT/target}/release/eye-tracker"
 
 # Pinned third-party build tools. To update: pick a tagged release, and copy the
 # SHA-256 of each asset from the release page (or `sha256sum` a downloaded copy).
@@ -56,10 +58,11 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --version) VERSION="${2:?--version needs a value}"; shift 2 ;;
     --dist) DIST="${2:?--dist needs a path}"; shift 2 ;;
+    --binary) BINARY="${2:?--binary needs a path}"; shift 2 ;;
     --appimagetool) APPIMAGETOOL="${2:?--appimagetool needs a path}"; shift 2 ;;
     --runtime-file) RUNTIME_FILE="${2:?--runtime-file needs a path}"; shift 2 ;;
     --allow-unpinned) ALLOW_UNPINNED=1; shift ;;
-    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -67,17 +70,18 @@ done
 [[ "$(uname -s)" == "Linux" ]] || die "this script builds Linux packages; run it on Linux"
 
 if [[ -z "$VERSION" ]]; then
-  VERSION="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$ROOT/src/eye_tracker/__init__.py")"
-  [[ -n "$VERSION" ]] || die "cannot read __version__ from src/eye_tracker/__init__.py"
+  VERSION="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$ROOT/Cargo.toml" | head -n 1)"
+  [[ -n "$VERSION" ]] || die "cannot read the version from Cargo.toml"
 fi
 ARCH="${ARCH:-$(uname -m)}"
 DIST="$(mkdir -p "$DIST" && cd "$DIST" && pwd)"
 
-BUNDLE="$DIST/eye-tracker"
+MODELS="$ROOT/crates/eye-tracker/models"
 DESKTOP="$HERE/eye-tracker.desktop"
 ICON="$HERE/eye-tracker.png"
-[[ -x "$BUNDLE/eye-tracker" ]] || die "PyInstaller output not found: $BUNDLE/eye-tracker"
-[[ -f "$ICON" ]] || die "missing $ICON; run: uv run python scripts/make_icons.py"
+[[ -x "$BINARY" ]] || die "executable not found: $BINARY (run: cargo build --release)"
+[[ -f "$ICON" ]] || die "missing $ICON; run: cargo xtask make-icons"
+[[ -f "$MODELS/NOTICE.md" && -d "$MODELS/licenses" ]] || die "missing the models' NOTICE.md or licenses/ in $MODELS"
 
 BASENAME="EyeTracker-$VERSION-linux-$ARCH"
 TARBALL="$DIST/$BASENAME.tar.gz"
@@ -154,39 +158,6 @@ find_runtime() {
   fetch_verified     "https://github.com/AppImage/type2-runtime/releases/download/$APPIMAGE_RUNTIME_VERSION/runtime-$ARCH"     "$RUNTIME_FILE" "$sha256"
 }
 
-# ------------------------------------------------------------------ libxcb-cursor
-# Path of a system library for this architecture, from the dynamic linker cache.
-system_library() {
-  local soname="$1" tag="" listing="" path="" candidate
-  case "$ARCH" in
-    x86_64) tag="x86-64" ;;
-    aarch64) tag="AArch64" ;;
-  esac
-  # Lines look like: "libxcb-cursor.so.0 (libc6,x86-64) => /lib/x86_64-linux-gnu/libxcb-cursor.so.0"
-  listing="$(ldconfig -p 2>/dev/null || /sbin/ldconfig -p 2>/dev/null || true)"
-  path="$(awk -v lib="$soname" -v tag="$tag" \
-    '$1 == lib && (tag == "" || index($0, tag)) { print $NF; exit }' <<<"$listing")"
-  if [[ -z "$path" ]]; then
-    for candidate in /usr/lib/*-linux-gnu/"$soname" /usr/lib64/"$soname" /usr/lib/"$soname"; do
-      if [[ -f "$candidate" ]]; then path="$candidate"; break; fi
-    done
-  fi
-  [[ -n "$path" && -f "$path" ]] && echo "$path"
-}
-
-# Make sure a copy of the onedir bundle contains libxcb-cursor.so.0.
-ensure_xcb_cursor() {
-  local bundle="$1" lib
-  if [[ -n "$(find "$bundle" -name 'libxcb-cursor.so.0*' -print -quit)" ]]; then
-    return 0
-  fi
-  lib="$(system_library libxcb-cursor.so.0 || true)"
-  [[ -n "$lib" ]] || die "libxcb-cursor.so.0 is neither bundled nor installed (sudo apt install libxcb-cursor0)"
-  echo "    adding $lib"
-  # _internal/ is on LD_LIBRARY_PATH at run time (set by the PyInstaller bootloader).
-  install -m 644 "$lib" "$bundle/_internal/libxcb-cursor.so.0"
-}
-
 find_appimagetool
 find_runtime
 
@@ -195,9 +166,10 @@ trap 'rm -rf "$WORK"' EXIT
 
 # ------------------------------------------------------------------------ tarball
 echo "==> Creating $TARBALL"
-mkdir -p "$WORK/tar"
-cp -a "$BUNDLE" "$WORK/tar/eye-tracker"
-ensure_xcb_cursor "$WORK/tar/eye-tracker"
+mkdir -p "$WORK/tar/eye-tracker"
+install -m 755 "$BINARY" "$WORK/tar/eye-tracker/eye-tracker"
+install -m 644 "$MODELS/NOTICE.md" "$WORK/tar/eye-tracker/NOTICE.md"
+cp -R "$MODELS/licenses" "$WORK/tar/eye-tracker/licenses"
 install -m 644 "$DESKTOP" "$WORK/tar/eye-tracker/eye-tracker.desktop"
 install -m 644 "$ICON" "$WORK/tar/eye-tracker/eye-tracker.png"
 install -m 644 "$ROOT/LICENSE" "$WORK/tar/eye-tracker/LICENSE"
@@ -209,18 +181,18 @@ echo "==> Assembling AppDir"
 APPDIR="$WORK/EyeTracker.AppDir"
 mkdir -p \
   "$APPDIR/usr/bin" \
-  "$APPDIR/usr/lib" \
+  "$APPDIR/usr/share/eye-tracker" \
   "$APPDIR/usr/share/applications" \
   "$APPDIR/usr/share/icons/hicolor/512x512/apps"
-cp -a "$BUNDLE" "$APPDIR/usr/lib/eye-tracker"
-ensure_xcb_cursor "$APPDIR/usr/lib/eye-tracker"
-ln -s ../lib/eye-tracker/eye-tracker "$APPDIR/usr/bin/eye-tracker"
+install -m 755 "$BINARY" "$APPDIR/usr/bin/eye-tracker"
 install -m 755 "$HERE/AppRun" "$APPDIR/AppRun"
 install -m 644 "$DESKTOP" "$APPDIR/eye-tracker.desktop"
 install -m 644 "$DESKTOP" "$APPDIR/usr/share/applications/eye-tracker.desktop"
 install -m 644 "$ICON" "$APPDIR/eye-tracker.png"
 install -m 644 "$ICON" "$APPDIR/usr/share/icons/hicolor/512x512/apps/eye-tracker.png"
-install -m 644 "$ROOT/LICENSE" "$APPDIR/usr/lib/eye-tracker/LICENSE"
+install -m 644 "$ROOT/LICENSE" "$APPDIR/usr/share/eye-tracker/LICENSE"
+install -m 644 "$MODELS/NOTICE.md" "$APPDIR/usr/share/eye-tracker/NOTICE.md"
+cp -R "$MODELS/licenses" "$APPDIR/usr/share/eye-tracker/licenses"
 ln -s eye-tracker.png "$APPDIR/.DirIcon"
 
 echo "==> Running appimagetool ($APPIMAGETOOL)"

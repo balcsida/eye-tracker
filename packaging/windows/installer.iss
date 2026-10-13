@@ -8,14 +8,16 @@
 ; documented "eye-tracker <command>" works in any new terminal; uninstalling (or
 ; unticking the task in an upgrade) removes that PATH entry again.
 ;
-; Build from the repository root after PyInstaller has produced dist\EyeTracker:
+; Build from the repository root after the bundle folder has been assembled (the Windows
+; job of .github/workflows/build.yml copies the two executables under the names below,
+; NOTICE.md, licenses\ and the icon into dist\EyeTracker):
 ;
 ;   iscc /DAppVersion=0.1.0 packaging\windows\installer.iss
 ;
 ; Optional defines:
 ;   /DAppVersionNumeric=0.1.0   purely numeric version for the file properties
 ;                               (default: AppVersion; required for versions like 0.2.0rc1)
-;   /DBundleDir=<dir>           PyInstaller output folder (default: dist\EyeTracker)
+;   /DBundleDir=<dir>           the assembled bundle folder (default: dist\EyeTracker)
 ;   /DOutputDir=<dir>           where the setup program is written (default: dist)
 ;
 ; Keep this file UTF-8 *with* a byte order mark: without it Inno Setup reads the
@@ -42,11 +44,13 @@
 ; The same console program under the name the documentation uses ("eye-tracker
 ; doctor"), found through PATH. Start-at-sign-in keeps using the windowed AppExeName.
 #define CliCommandExeName "eye-tracker.exe"
+; Shipped next to the executables for the shortcuts and the uninstaller entry.
+#define IconFileName "eye-tracker.ico"
 ; Same ID the app sets at run time (SetCurrentProcessExplicitAppUserModelID), so
 ; notifications and the taskbar group with the Start menu shortcut.
 #define AppUserModelID "io.github.bugraskl.eyetracker"
 #define RepoUrl "https://github.com/bugraskl/eye-tracker"
-; Value name shared with eye_tracker.platform.autostart, so the app and the
+; Value name shared with platform/autostart.rs, so the app and the
 ; installer manage the same "start at sign-in" entry.
 #define RunValueName "EyeTracker"
 #define RunKey "Software\Microsoft\Windows\CurrentVersion\Run"
@@ -55,7 +59,10 @@
 #define UninstallKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{" + AppGuid + "}_is1"
 
 #if !FileExists(AddBackslash(BundleDir) + AppExeName)
-  #error PyInstaller output not found; build it first (see packaging/pyinstaller/eye-tracker.spec)
+  #error Bundle folder not found; assemble it first (see .github/workflows/build.yml)
+#endif
+#if !FileExists(AddBackslash(BundleDir) + "NOTICE.md")
+  #error The face models' NOTICE.md and licenses\ must ship next to the executables
 #endif
 
 [Setup]
@@ -93,7 +100,7 @@ LicenseFile=..\..\LICENSE
 #if FileExists(AddBackslash(SourcePath) + "eye-tracker.ico")
 SetupIconFile=eye-tracker.ico
 #endif
-UninstallDisplayIcon={app}\{#AppExeName}
+UninstallDisplayIcon={app}\{#IconFileName}
 UninstallDisplayName={#AppName}
 WizardStyle=modern
 ShowLanguageDialog=auto
@@ -133,22 +140,22 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "addtopath"; Description: "{cm:AddToPath}"; GroupDescription: "{cm:CommandLineGroup}"
 
 [InstallDelete]
-; One-folder builds change file names between releases; start from a clean
-; runtime folder so no stale libraries are left behind after an upgrade.
+; Earlier builds kept their runtime libraries in _internal; remove it so an upgrade
+; leaves no stale files behind.
 Type: filesandordirs; Name: "{app}\_internal"
 
 [Files]
 Source: "{#BundleDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Always installed, so "eye-tracker.exe" has one documented place even without the
-; PATH entry. It must sit next to _internal, which a one-folder build loads from.
+; PATH entry.
 Source: "{#BundleDir}\{#CliExeName}"; DestDir: "{app}"; DestName: "{#CliCommandExeName}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; AppUserModelID: "{#AppUserModelID}"; Comment: "{cm:ShortcutComment}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; AppUserModelID: "{#AppUserModelID}"; Comment: "{cm:ShortcutComment}"; Tasks: desktopicon
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#IconFileName}"; AppUserModelID: "{#AppUserModelID}"; Comment: "{cm:ShortcutComment}"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#IconFileName}"; AppUserModelID: "{#AppUserModelID}"; Comment: "{cm:ShortcutComment}"; Tasks: desktopicon
 
 [Registry]
-; Same entry that "Start at login" in the app writes (see platform/autostart.py).
+; Same entry that "Start at login" in the app writes (see platform/autostart.rs).
 ; On upgrades ShouldWriteAutostart keeps whatever the user has chosen since.
 Root: HKCU; Subkey: "{#RunKey}"; ValueType: string; ValueName: "{#RunValueName}"; ValueData: """{app}\{#AppExeName}"" --background"; Flags: uninsdeletevalue; Tasks: startup; Check: ShouldWriteAutostart
 ; A "Disabled" flag left by Task Manager would silently override the entry above.

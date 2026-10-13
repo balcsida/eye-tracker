@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Sign "Eye Tracker.app" and wrap it in a drag-to-install disk image.
 #
-# Usage (from the repository root, after PyInstaller):
+# Usage (from the repository root, after `cargo build --release`):
 #   bash packaging/macos/make_dmg.sh [--app "dist/Eye Tracker.app"] [--out FILE.dmg]
 #        [--version X.Y.Z] [--identity NAME] [--keychain PATH]
 #
-# Defaults: --app dist/Eye Tracker.app, --version from the app's Info.plist,
+# Defaults: --app dist/Eye Tracker.app (assembled by make_app.sh when it does not exist),
+# --version from the app's Info.plist,
 # --out dist/EyeTracker-<version>-macos-<arch>.dmg, --identity "-" (ad hoc) or
 # $MACOS_SIGN_IDENTITY, --keychain $MACOS_SIGN_KEYCHAIN (default: the search list).
 #
@@ -43,12 +44,16 @@ while [[ $# -gt 0 ]]; do
     --version) VERSION="${2:?--version needs a value}"; shift 2 ;;
     --identity) IDENTITY="${2:?--identity needs a name (or - for ad hoc)}"; shift 2 ;;
     --keychain) KEYCHAIN="${2:?--keychain needs a path}"; shift 2 ;;
-    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
 
-[[ -d "$APP" ]] || die "app bundle not found: $APP (run PyInstaller first)"
+if [[ ! -d "$APP" ]]; then
+  MAKE_APP_ARGS=(--out "$APP")
+  if [[ -n "$VERSION" ]]; then MAKE_APP_ARGS+=(--version "$VERSION"); fi
+  bash "$ROOT/packaging/macos/make_app.sh" "${MAKE_APP_ARGS[@]}"
+fi
 PLIST="$APP/Contents/Info.plist"
 [[ -f "$PLIST" ]] || die "missing $PLIST"
 
@@ -59,8 +64,7 @@ ARCH="$(uname -m)"
 OUT="${OUT:-$ROOT/dist/EyeTracker-$VERSION-macos-$ARCH.dmg}"
 mkdir -p "$(dirname "$OUT")"
 
-# A symbolic link whose target is missing (a library that the spec left out, still
-# linked from the top-level folders) makes xattr and codesign fail with messages that
+# A symbolic link whose target is missing makes xattr and codesign fail with messages that
 # do not say why. With -L, find reports exactly those links as type l.
 echo "==> Checking the symbolic links in $APP"
 if ! BROKEN="$(find -L "$APP" -type l)"; then
@@ -71,7 +75,7 @@ if [[ -n "$BROKEN" ]]; then
   while IFS= read -r link; do
     echo "  ${link#"$APP"/} -> $(readlink "$link")" >&2
   done <<<"$BROKEN"
-  die "the app bundle is incomplete; rebuild it with packaging/pyinstaller/eye-tracker.spec"
+  die "the app bundle is incomplete; rebuild it with packaging/macos/make_app.sh"
 fi
 
 SIGN_ARGS=(--force --deep --sign "$IDENTITY" --timestamp=none)

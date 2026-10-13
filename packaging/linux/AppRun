@@ -1,8 +1,9 @@
 #!/bin/sh
-# AppImage entry point: start the bundled PyInstaller executable.
+# AppImage entry point: start the bundled executable.
 #
-# The PyInstaller bootloader sets LD_LIBRARY_PATH to its own library folder and
-# keeps the caller's value in LD_LIBRARY_PATH_ORIG, which the app restores for
-# the system tools it runs (loginctl, xset, gdbus, ...).
+# The caller's LD_LIBRARY_PATH is kept in LD_LIBRARY_PATH_ORIG, which the app restores
+# (or clears when it was empty) for the system tools it runs (loginctl, xset, gdbus, ...)
+# so that nothing the AppImage runtime added leaks into them.
 HERE="$(dirname "$(readlink -f "$0")")"
-exec "$HERE/usr/lib/eye-tracker/eye-tracker" "$@"
+export LD_LIBRARY_PATH_ORIG="${LD_LIBRARY_PATH:-}"
+exec "$HERE/usr/bin/eye-tracker" "$@"
