@@ -9,6 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::platform::base::which;
 use crate::{APP_NAME, APP_SLUG, paths};
 
 pub const EXIT_OK: i32 = 0;
@@ -71,7 +72,7 @@ fn with_process_context<T>(f: impl FnOnce(&Context) -> T) -> T {
         exe: &exe,
         os: std::env::consts::OS,
         appimage: &appimage,
-        which: &find_on_path,
+        which: &which,
         profile: profile.as_deref(),
     })
 }
@@ -274,17 +275,6 @@ fn same_file(a: &Path, b: &Path) -> bool {
         (Ok(a), Ok(b)) => a == b,
         _ => false,
     }
-}
-
-/// `shutil.which(name)`: the first PATH entry holding an executable file called `name`.
-fn find_on_path(name: &str) -> Option<PathBuf> {
-    let extensions: &[&str] = if cfg!(windows) { &["", ".exe"] } else { &[""] };
-    std::env::split_paths(&std::env::var_os("PATH")?).find_map(|dir| {
-        extensions
-            .iter()
-            .map(|ext| dir.join(format!("{name}{ext}")))
-            .find(|candidate| candidate.is_file())
-    })
 }
 
 #[cfg(test)]

@@ -252,7 +252,7 @@ pub struct GazePoint {
 }
 
 /// What a [`WindowRef`] points at, in the platform's own terms.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WindowHandle {
     /// An HWND.
     Hwnd(isize),

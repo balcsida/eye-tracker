@@ -408,7 +408,7 @@ impl PaneDecider {
 
         // The gaze is clearly on the candidate.
         self.record(now, Some(candidate.id.clone()));
-        self.reading.observe(&candidate.id, now);
+        self.reading.observe(candidate.id.clone(), now);
         self.update_reading(now, last_key_activity, Some(&current.id));
         let (share, span) = self.dwell(now, &candidate.id);
         let progress = if cfg.dwell_s <= 0.0 {
@@ -532,7 +532,7 @@ impl PaneDecider {
             last_key,
             cfg.typing_grace_s,
             cfg.reading_grace_s,
-            context,
+            &context,
             context.is_some(),
         );
     }

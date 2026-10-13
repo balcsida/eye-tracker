@@ -6,13 +6,13 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
-use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
+use crate::platform::base::process_basename;
 use crate::types::{WindowHandle, WindowRef};
 
 use super::super::types::PaneError;
@@ -124,80 +124,14 @@ pub fn run_command(argv: &[String], timeout: f64) -> Result<CommandResult, PaneE
 /// A dictionary key for the window of a [`WindowRef`]: its handle and its process id, so a
 /// handle reused by another process's window is another key.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct WindowKey(String, Option<u32>);
+pub struct WindowKey(WindowHandle, Option<u32>);
 
 pub fn window_key(window: &WindowRef) -> WindowKey {
-    // `WindowHandle` has no `Hash`; its Debug form identifies it all the same.
-    let handle = match &window.handle {
-        WindowHandle::Hwnd(h) => format!("hwnd:{h}"),
-        WindowHandle::X11(id) => format!("x11:{id}"),
-        WindowHandle::Ax { pid, element } => format!("ax:{pid}:{element}"),
-    };
-    WindowKey(handle, window.pid)
+    WindowKey(window.handle.clone(), window.pid)
 }
 
-/// Finds a program by name (injectable for tests; [`which`] by default).
+/// Finds a program by name (injectable for tests; [`which`](crate::platform::base::which) by default).
 pub type Which = Box<dyn Fn(&str) -> Option<String> + Send>;
-
-/// The program called `name`, as `shutil.which` finds it: a path to an executable file, or
-/// a name looked up in `PATH` (with the `PATHEXT` extensions on Windows).
-pub fn which(name: &str) -> Option<String> {
-    let has_dir = name.contains('/') || (cfg!(windows) && name.contains('\\'));
-    if has_dir {
-        return executable_candidate(Path::new(name));
-    }
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .filter(|dir| !dir.as_os_str().is_empty())
-        .find_map(|dir| executable_candidate(&dir.join(name)))
-}
-
-fn executable_candidate(path: &Path) -> Option<String> {
-    if cfg!(windows) {
-        pathext_candidate(path)
-    } else {
-        unix_candidate(path)
-    }
-}
-
-/// `path` as is, or with one of the `PATHEXT` extensions, if that is a file (Windows).
-fn pathext_candidate(path: &Path) -> Option<String> {
-    let extensions = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
-    let extensions: Vec<&str> = extensions.split(';').filter(|e| !e.is_empty()).collect();
-    let lower = path.to_string_lossy().to_lowercase();
-    let candidates: Vec<std::path::PathBuf> = if extensions
-        .iter()
-        .any(|e| lower.ends_with(&e.to_lowercase()))
-    {
-        vec![path.to_path_buf()]
-    } else {
-        extensions
-            .iter()
-            .map(|e| {
-                let mut full = path.as_os_str().to_owned();
-                full.push(e);
-                full.into()
-            })
-            .collect()
-    };
-    candidates
-        .into_iter()
-        .find(|c| c.is_file())
-        .map(|c| c.to_string_lossy().into_owned())
-}
-
-/// `path` if it is an executable file (Unix).
-fn unix_candidate(path: &Path) -> Option<String> {
-    let meta = std::fs::metadata(path).ok()?;
-    #[cfg(unix)]
-    let executable = {
-        use std::os::unix::fs::PermissionsExt;
-        meta.permissions().mode() & 0o111 != 0
-    };
-    #[cfg(not(unix))]
-    let executable = true;
-    (meta.is_file() && executable).then(|| path.to_string_lossy().into_owned())
-}
 
 /// Full path of the program `pid` runs (`None` when gone or unreadable).
 pub fn executable_of(pid: u32) -> Option<String> {
@@ -291,24 +225,6 @@ pub fn parent_pids(pid: u32) -> Vec<u32> {
 pub fn descendant_names(pid: u32) -> HashSet<String> {
     ProcessTable::read().descendant_names(pid)
 }
-
-// ---- TODO(integrator): unify with platform::base::process_basename (ported by another worker)
-/// Executable extensions dropped from process names.
-const EXECUTABLE_SUFFIXES: [&str; 3] = [".exe", ".app", ".bin"];
-
-/// `"WindowsTerminal.exe"` → `"windowsterminal"`, `"/usr/bin/kitty"` → `"kitty"`: the lower-cased
-/// file name without directory or executable extension.
-pub fn process_basename(name: &str) -> String {
-    let base = name.replace('/', "\\");
-    let base = base.rsplit('\\').next().unwrap_or("").trim().to_lowercase();
-    for suffix in EXECUTABLE_SUFFIXES {
-        if let Some(stem) = base.strip_suffix(suffix) {
-            return stem.to_string();
-        }
-    }
-    base
-}
-// ---- end of the platform::base helper
 
 #[cfg(test)]
 #[path = "command_tests.rs"]

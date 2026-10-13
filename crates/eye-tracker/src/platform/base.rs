@@ -9,6 +9,7 @@
 //! thread. Methods marked *any thread* may additionally be called from worker threads.
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use parking_lot::Mutex;
@@ -33,6 +34,63 @@ pub fn process_basename(name: &str) -> String {
         }
     }
     base
+}
+
+/// The program called `name`, as `shutil.which` finds it: a path to an executable file, or
+/// a name looked up in `PATH` (with the `PATHEXT` extensions on Windows).
+pub fn which(name: &str) -> Option<PathBuf> {
+    let has_dir = name.contains('/') || (cfg!(windows) && name.contains('\\'));
+    if has_dir {
+        return executable_candidate(Path::new(name));
+    }
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .find_map(|dir| executable_candidate(&dir.join(name)))
+}
+
+fn executable_candidate(path: &Path) -> Option<PathBuf> {
+    if cfg!(windows) {
+        pathext_candidate(path)
+    } else {
+        unix_candidate(path)
+    }
+}
+
+/// `path` as is, or with one of the `PATHEXT` extensions, if that is a file (Windows).
+fn pathext_candidate(path: &Path) -> Option<PathBuf> {
+    let extensions = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+    let extensions: Vec<&str> = extensions.split(';').filter(|e| !e.is_empty()).collect();
+    let lower = path.to_string_lossy().to_lowercase();
+    let candidates: Vec<PathBuf> = if extensions
+        .iter()
+        .any(|e| lower.ends_with(&e.to_lowercase()))
+    {
+        vec![path.to_path_buf()]
+    } else {
+        extensions
+            .iter()
+            .map(|e| {
+                let mut full = path.as_os_str().to_owned();
+                full.push(e);
+                full.into()
+            })
+            .collect()
+    };
+    candidates.into_iter().find(|c| c.is_file())
+}
+
+/// `path` if it is an executable file (Unix).
+fn unix_candidate(path: &Path) -> Option<PathBuf> {
+    let meta = std::fs::metadata(path).ok()?;
+    #[cfg(unix)]
+    let executable = {
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode() & 0o111 != 0
+    };
+    #[cfg(not(unix))]
+    let executable = true;
+    (meta.is_file() && executable).then(|| path.to_path_buf())
 }
 
 /// Names cached by `(pid, process creation time)`, oldest first.

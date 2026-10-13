@@ -8,6 +8,7 @@
 // table (`ProcessTable`) instead of a fake `psutil.Process`.
 
 use super::*;
+use crate::platform::base::process_basename;
 
 #[cfg(unix)]
 fn argv(items: &[&str]) -> Vec<String> {

@@ -17,12 +17,12 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::platform::base::which;
 use crate::types::{AppIdentity, Rect, WindowRef};
 
 use super::super::types::{ClientRect, Pane, PaneError, PaneProvider, PaneSnapshot};
 use super::command::{
-    COMMAND_TIMEOUT_S, CommandRunner, Which, WindowKey, descendant_names, parent_pids, which,
-    window_key,
+    COMMAND_TIMEOUT_S, CommandRunner, Which, WindowKey, descendant_names, parent_pids, window_key,
 };
 
 /// Terminal emulators whose windows may run a tmux client (process names).
@@ -216,7 +216,7 @@ impl TmuxProvider {
         Self {
             client_rect,
             run: runner,
-            which: Box::new(which),
+            which: Box::new(|name| which(name).map(|p| p.to_string_lossy().into_owned())),
             parents: Box::new(parent_pids),
             descendants: Box::new(descendant_names),
             system: crate::panes::registry::current_system().to_string(),

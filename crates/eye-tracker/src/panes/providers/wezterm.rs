@@ -17,11 +17,12 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
+use crate::platform::base::which;
 use crate::types::{AppIdentity, Rect, WindowRef};
 
 use super::super::types::{ClientRect, Pane, PaneError, PaneId, PaneProvider, PaneSnapshot};
 use super::command::{
-    COMMAND_TIMEOUT_S, CommandRunner, Which, WindowKey, executable_of, which, window_key,
+    COMMAND_TIMEOUT_S, CommandRunner, Which, WindowKey, executable_of, window_key,
 };
 
 pub const GUI_PROCESSES: [&str; 1] = ["wezterm-gui"];
@@ -202,7 +203,7 @@ impl WezTermProvider {
         Self {
             client_rect,
             run: runner,
-            which: Box::new(which),
+            which: Box::new(|name| which(name).map(|p| p.to_string_lossy().into_owned())),
             executable: Box::new(executable_of),
             system: crate::panes::registry::current_system().to_string(),
             timeout: COMMAND_TIMEOUT_S,
