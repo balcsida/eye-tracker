@@ -55,14 +55,14 @@ fn test_line_format() {
     // "2026-01-31 12:00:00,123 WARNING eye_tracker.config: hello 42"
     let warning = line(log::Level::Warn, "eye_tracker::config");
     assert!(
-        warning.ends_with(" WARNING eye_tracker.config: hello 42\n"),
+        warning.ends_with(" WARNING eye_tracker.config: hello 42"),
         "{warning}"
     );
     assert_eq!(warning.as_bytes()[4], b'-');
     assert_eq!(warning.as_bytes()[19], b',');
     let crash = line(log::Level::Error, CRASH_TARGET);
     assert!(
-        crash.ends_with(" CRITICAL eye_tracker.crash: hello 42\n"),
+        crash.ends_with(" CRITICAL eye_tracker.crash: hello 42"),
         "{crash}"
     );
 }

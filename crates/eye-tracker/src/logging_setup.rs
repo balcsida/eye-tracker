@@ -46,7 +46,9 @@ impl LogWriter for SwitchWriter {
             file.write(now, record)?;
         }
         if sinks.console {
-            format_line(&mut io::stderr().lock(), now, record)?;
+            let mut stderr = io::stderr().lock();
+            format_line(&mut stderr, now, record)?;
+            writeln!(stderr)?;
         }
         Ok(())
     }
@@ -189,7 +191,8 @@ fn open_log_file() -> Result<FileLogWriter, flexi_logger::FlexiLoggerError> {
         .try_build()
 }
 
-/// `2026-01-31 12:00:00,123 WARNING eye_tracker.config: message`
+/// `2026-01-31 12:00:00,123 WARNING eye_tracker.config: message`, without the line ending (the
+/// file writer adds it).
 fn format_line(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) -> io::Result<()> {
     let target = record.target();
     let level = if target == CRASH_TARGET {
@@ -202,7 +205,7 @@ fn format_line(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) -> io:
             log::Level::Debug | log::Level::Trace => "DEBUG",
         }
     };
-    writeln!(
+    write!(
         w,
         "{} {level:<7} {}: {}",
         now.format("%Y-%m-%d %H:%M:%S,%3f"),
