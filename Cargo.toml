@@ -72,6 +72,7 @@ walkdir = "2.5.0"
 # Platform
 windows = { version = "0.62.2", features = [
   "Win32_Foundation",
+  "Win32_Globalization",
   "Win32_UI_WindowsAndMessaging",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_System_Threading",
