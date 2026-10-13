@@ -1,4 +1,4 @@
-//! `cargo xtask <command>`: developer tooling (ports of `scripts/*.py`).
+//! `cargo xtask <command>`: developer tooling.
 
 mod build_site;
 mod check_privacy;

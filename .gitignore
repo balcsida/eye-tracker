@@ -1,19 +1,6 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
 # Build output
 build/
 dist/
-*.spec.bak
 packaging/**/AppDir/
 *.AppImage
 *.dmg
@@ -31,7 +18,7 @@ graft/
 .DS_Store
 Thumbs.db
 
-# Website build output (scripts/build_site.py)
+# Website build output (cargo xtask build-site)
 _site/
 
 # Local design-checker state

@@ -1,7 +1,5 @@
 //! Decision engine: turns observations and input activity into actions.
 
-// TODO(port): src/eye_tracker/engine/__init__.py
-
 pub mod camera_yield;
 pub mod controller;
 pub mod decision;

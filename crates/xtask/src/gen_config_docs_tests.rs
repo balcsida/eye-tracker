@@ -105,7 +105,6 @@ fn local_targets(page: &Path) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "README, docs/building.md and docs/privacy.md still link the pre-move model folder src/eye_tracker/vision/models"]
 fn test_relative_links_in_markdown_resolve() {
     let root = repo_root();
     let mut broken = Vec::new();

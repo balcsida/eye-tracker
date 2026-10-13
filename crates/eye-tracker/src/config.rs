@@ -364,8 +364,8 @@ settings! { platform;
     },
     camera: CameraSettings {
         device: String = "0".into() => {
-            doc = "Camera index ('0', '1', …) or a local video/image file path (useful for \
-                testing). On Linux also /dev/videoN or a stable link such as \
+            doc = "Camera index ('0', '1', …) or a local image file or folder of image frames \
+                (useful for testing; video files are not supported). On Linux also /dev/videoN or a stable link such as \
                 /dev/v4l/by-id/…, which keeps finding a camera that was re-plugged under \
                 another number. URLs and other network sources are refused: Eye Tracker works \
                 fully offline."
@@ -374,7 +374,8 @@ settings! { platform;
         height: i64 = 480 => { lo = 120, hi = 1080, doc = "Requested capture height." },
         api: String = "auto".into() => {
             choices = &["auto", "dshow", "msmf", "avfoundation", "v4l2", "any"],
-            doc = "OpenCV capture API."
+            doc = "Capture API hint. The platform's native camera API is always used; only dshow has \
+                an effect (it keeps the DirectShow format policy)."
         },
     },
     performance: PerformanceSettings {

@@ -1,7 +1,5 @@
 //! The user interface (egui).
 
-// TODO(port): src/eye_tracker/ui/__init__.py
-
 pub mod about;
 pub mod calibration_window;
 pub mod countdown;

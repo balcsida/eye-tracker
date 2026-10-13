@@ -13,8 +13,8 @@
 //!   failing constructor through `create_with`.
 //! - `test_mediapipe_runtime_is_gone` / `test_mediapipe_is_not_a_dependency` check the Rust
 //!   sources and `Cargo.toml` instead of `sys.modules` and `pyproject.toml`.
-//! - `test_fetch_models_pins_the_same_checksums` checks `scripts/fetch_models.py` (the spec of
-//!   `cargo xtask fetch-models`, which is not ported yet) instead of importing it.
+//! - `test_fetch_models_pins_the_same_checksums` reads the table of
+//!   `crates/xtask/src/fetch_models.rs` (`cargo xtask fetch-models`) instead of importing it.
 //! - `test_other_frame_formats`: the `gray` and `bgra` cases do not exist in Rust, where a
 //!   [`Frame`] is always BGR; `large` and `tiny` are ported.
 //! - `test_close_is_idempotent_and_final` expects a panic where Python raised `RuntimeError`.
@@ -294,10 +294,10 @@ fn test_model_notice_lists_every_file() {
 
 #[test]
 fn test_fetch_models_pins_the_same_checksums() {
-    let script = include_str!("../../../../../scripts/fetch_models.py");
+    let table = include_str!("../../../../xtask/src/fetch_models.rs");
     for (name, sha256) in MODEL_FILES {
-        assert!(script.contains(name), "{name}");
-        assert!(script.contains(sha256), "{name}");
+        assert!(table.contains(name), "{name}");
+        assert!(table.contains(sha256), "{name}");
     }
 }
 

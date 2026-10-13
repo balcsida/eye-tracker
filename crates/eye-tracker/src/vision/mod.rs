@@ -4,8 +4,6 @@
 //! Python app. The helpers below (greyscale, `INTER_AREA` resizing, absolute difference, mean and
 //! standard deviation) are the few image operations the motion gate needs.
 
-// TODO(port): src/eye_tracker/vision/__init__.py
-
 pub mod camera;
 pub mod motion;
 pub mod threads;

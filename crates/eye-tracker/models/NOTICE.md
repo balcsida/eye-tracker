@@ -1,10 +1,11 @@
 # Bundled face models: licences and provenance
 
-Eye Tracker ships three model files. They run entirely inside OpenCV (`cv2.dnn`
-and `cv2.FaceDetectorYN`); no other inference runtime is used and nothing is
-downloaded at run time. `scripts/fetch_models.py` recreates and verifies every
-model file from the upstream sources below (`--check` verifies without network
-access), and `eye_tracker.vision.backends.MODEL_FILES` pins the same checksums.
+Eye Tracker ships three model files, embedded in the program. They run entirely
+inside the app with the `tract` inference library; no other inference runtime is
+used and nothing is downloaded at run time. `cargo xtask fetch-models` recreates
+and verifies every model file from the upstream sources below (`--check` verifies
+without network access), and `MODEL_FILES` in `vision/backends/mod.rs` pins the
+same checksums.
 
 | File | Size (bytes) | SHA-256 | Licence |
 | --- | ---: | --- | --- |
@@ -26,7 +27,7 @@ published at <https://www.apache.org/licenses/LICENSE-2.0.txt>.
 `LICENSE-YUNET.txt` reproduces the YuNet model's licence notice (copyright line
 and MIT permission notice) from
 <https://github.com/opencv/opencv_zoo/blob/main/models/face_detection_yunet/LICENSE>.
-`scripts/fetch_models.py --check` fails when either text is missing or altered.
+`cargo xtask fetch-models --check` fails when either text is missing or altered.
 
 ## MediaPipe Face Landmarker (Apache-2.0)
 
@@ -49,7 +50,7 @@ Both files are unmodified members of the official `face_landmarker.task` bundle
 | `face_detector.tflite` | no (YuNet finds faces instead) | `b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f` |
 | `face_blendshapes.tflite` | no | `4f36dded049db18d76048567439b2a7f58f1daabc00d78bfe8f3ad396a2d2082` |
 
-The MediaPipe *runtime* (the `mediapipe` Python package and `libmediapipe`) is
+The MediaPipe *runtime* (the `mediapipe` package and `libmediapipe`) is
 deliberately not used: it contains a usage-logging client that uploads to
 Google servers. Only the model weights and geometry data are redistributed.
 

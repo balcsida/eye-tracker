@@ -29,4 +29,4 @@ packaging/linux/AppRun text eol=lf
 *.svg text eol=lf -diff
 
 # Generated files: collapsed in GitHub diffs, excluded from language statistics.
-uv.lock text eol=lf linguist-generated=true
+Cargo.lock text eol=lf linguist-generated=true

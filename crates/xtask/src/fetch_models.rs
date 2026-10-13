@@ -107,7 +107,7 @@ pub fn models() -> Vec<Model> {
             homepage: "https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker"
                 .into(),
             description: "MediaPipe Face Landmarker bundle: the 478-point face landmark network \
-                          (with irises) and the canonical face geometry, run with OpenCV DNN"
+                          (with irises) and the canonical face geometry, run with tract"
                 .into(),
             members: vec![
                 Member::new(
