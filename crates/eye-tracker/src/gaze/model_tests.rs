@@ -8,10 +8,6 @@
 //   through JSON in test_from_dict_rejects_malformed_nonlinear_and_overflow.
 // * test_looks_away_uses_only_gaze_direction_features: the `one feature vector` check (a 2-D
 //   array passed to `looks_away`) is a type error in Rust (`x: &[f64]`).
-// * test_mixed_density_desk_keeps_the_coarse_monitors_edge_on_screen and
-//   test_away_regions_need_targets_spread_over_the_monitor: they need `calibration::evaluate`
-//   and `gaze_synth::calibration_samples`, which depend on gaze::calibration (not ported yet).
-//   Port them, with the helper outer_strip, when that module lands.
 // * New tests (not in Python): test_loads_a_model_written_by_the_python_app and
 //   test_features_at_cm_matches_synth_features_for_points_on_the_camera_plane.
 // * Exact equality after a JSON round trip (np.array_equal of predictions, == of regions) is
@@ -22,16 +18,19 @@
 //   math.nan / math.inf use null instead.
 // * test_away_regions_round_trip_and_validation fits the model directly on a mixed-density
 //   grid instead of through `calibration::evaluate`; the assertions are unchanged.
+// * test_mixed_density_desk_keeps_the_coarse_monitors_edge_on_screen runs its three seeds
+//   as one test, with the usual SEED_SHIFT.
 
 use nalgebra::DMatrix;
 use serde_json::{Value, json};
 
 use super::*;
+use crate::gaze::calibration::evaluate;
 use crate::testing::capture_logs;
 use crate::testing::gaze_synth::{
-    FEATURE_NAMES, GAZE, MIXED, MIXED_PANELS, Rng, STACKED, SynthOptions, THREE, TWO,
-    below_panels_cm, below_points, features_at_cm, grid_dataset, mean, median, pixel_errors,
-    points_matrix, random_points, row_vec, synth_features,
+    FEATURE_NAMES, GAZE, MIXED, MIXED_PANELS, Rng, STACKED, SampleOptions, SynthOptions, THREE,
+    TWO, below_panels_cm, below_points, calibration_samples, features_at_cm, grid_dataset, mean,
+    median, outer_strip, pixel_errors, points_matrix, random_points, row_vec, synth_features,
 };
 use crate::types::virtual_bounds;
 
@@ -1441,6 +1440,94 @@ fn without_regions(model: &GazeModel) -> GazeModel {
     GazeModel::from_dict(&data).unwrap()
 }
 
+/// `taskbar_points` and `edge_points`.
+type PointsIn = fn(&[Monitor], &mut Rng, usize) -> DMatrix<f64>;
+
+#[test]
+fn test_mixed_density_desk_keeps_the_coarse_monitors_edge_on_screen() {
+    // r3-logic-02: a 1080p panel next to a 4K one at 100 %. One linear map for the
+    // whole desk overshoots on the coarse monitor, and its outer edge read as
+    // "looking away", most of all while the user leans in (the per-feature rule
+    // used before flagged none of it).
+    for seed in [140, 141, 142] {
+        let mut rng = Rng::new(seed + SEED_SHIFT);
+        let options = SampleOptions {
+            per_point: 15,
+            panels: Some(MIXED_PANELS.as_slice()),
+            ..SampleOptions::default()
+        };
+        let samples = calibration_samples(&MIXED, &mut rng, 1.0, &options);
+        let (model, _) = evaluate(&samples, &MIXED, None, Some(&GAZE)).unwrap();
+        let [coarse, dense] = model.away_regions() else {
+            panic!("expected two regions");
+        };
+        assert_eq!(coarse.rect, MIXED[0].rect);
+        // placed larger than it is
+        assert!(
+            coarse.diagonal > 1.2 * MIXED[0].rect.diagonal(),
+            "seed {seed}"
+        );
+        // placed smaller: the monitor itself
+        assert_eq!(*dense, AwayRegion::of(MIXED[1].rect), "seed {seed}");
+        let previous = without_regions(&model);
+
+        let mut away_rate = |m: &GazeModel, points: &DMatrix<f64>, change: &SynthOptions| {
+            let panels = SynthOptions {
+                panels: Some(MIXED_PANELS.as_slice()),
+                ..*change
+            };
+            let feats = synth_features(points, &mut rng, 1.0, &panels);
+            let flags: Vec<f64> = (0..feats.nrows())
+                .map(|i| f64::from(u8::from(away(m, &row_vec(&feats, i), None, Some(&MIXED)))))
+                .collect();
+            mean(&flags)
+        };
+
+        let leaning_in = SynthOptions {
+            head_offset: (0.0, 0.0, -10.0),
+            ..SynthOptions::default()
+        };
+        let strip = outer_strip(MIXED[0].rect, &mut Rng::new(seed + 1000), 500, 0.10);
+        assert!(
+            away_rate(&model, &strip, &leaning_in) <= 0.01,
+            "seed {seed}"
+        );
+        // the regression
+        assert!(
+            away_rate(&previous, &strip, &leaning_in) >= 0.1,
+            "seed {seed}"
+        );
+        let mut changes = on_screen_changes();
+        changes.push(("leans in", leaning_in));
+        let regions: [(&str, PointsIn); 2] = [
+            ("taskbar_points", taskbar_points),
+            ("edge_points", edge_points),
+        ];
+        let mut points_rng = Rng::new(seed + 2000);
+        for (name, change) in &changes {
+            for (region_name, region) in regions {
+                let points = region(&MIXED, &mut points_rng, 400);
+                let rate = away_rate(&model, &points, change);
+                assert!(rate <= 0.01, "{seed} {name} {region_name} {rate}");
+            }
+        }
+        // Glances at the desk are caught as well as before.
+        for (cm, minimum) in [(40.0, 0.3), (60.0, 0.75)] {
+            let (x, y) = below_panels_cm(&MIXED_PANELS, &mut points_rng, 300, cm);
+            let feats = features_at_cm(&x, &y, &mut points_rng, 1.0, &SynthOptions::default());
+            let rate_of = |m: &GazeModel| {
+                let flags: Vec<f64> = (0..feats.nrows())
+                    .map(|i| f64::from(u8::from(away(m, &row_vec(&feats, i), None, Some(&MIXED)))))
+                    .collect();
+                mean(&flags)
+            };
+            let (rate, before) = (rate_of(&model), rate_of(&previous));
+            assert!(rate >= minimum, "{seed} {cm} cm: {rate}");
+            assert!(rate >= before - 0.02, "{seed} {cm} cm: {rate} < {before}");
+        }
+    }
+}
+
 #[test]
 fn test_regions_never_make_the_look_away_test_stricter() {
     let cases: [(&[Monitor], f64, u64); 3] = [
@@ -1631,4 +1718,23 @@ fn test_loads_a_model_written_by_the_python_app() {
         model.to_dict(),
         serde_json::from_str::<Value>(text).unwrap()
     );
+}
+
+#[test]
+fn test_away_regions_need_targets_spread_over_the_monitor() {
+    let mut rng = Rng::new(145);
+    let options = SampleOptions {
+        per_point: 10,
+        points_per_monitor: 1,
+        ..SampleOptions::default()
+    };
+    let samples = calibration_samples(&TWO, &mut rng, 1.0, &options);
+    let (x, y, _) = crate::gaze::calibration::samples_to_arrays(&samples).unwrap();
+    let rects: Vec<Rect> = TWO.iter().map(|m| m.rect).collect();
+    let model = new_model(1, 1.0, Some(&GAZE))
+        .fit(&x, &y, None, Some(bounds_of(&TWO)), Some(&rects))
+        .unwrap();
+    // One dot per monitor cannot place its corners: the monitors themselves.
+    let expected: Vec<AwayRegion> = rects.iter().map(|r| AwayRegion::of(*r)).collect();
+    assert_eq!(model.away_regions(), expected);
 }

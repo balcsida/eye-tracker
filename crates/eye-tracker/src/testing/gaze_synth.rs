@@ -12,8 +12,7 @@
 //! Differences from the Python module: points and features are `(n, k)` [`DMatrix`] values
 //! (the numpy arrays), the numpy generator is replaced by the seeded [`Rng`] (so the streams
 //! differ from numpy's), the keyword arguments of `synth_features` and `features_at_cm` are
-//! the fields of [`SynthOptions`], and `calibration_samples` is not ported yet because it
-//! needs `gaze::calibration`.
+//! the fields of [`SynthOptions`] and [`SampleOptions`]. `outer_strip` comes from test_model.py.
 
 // Shared by the tests of several modules; not every helper is used by every build.
 #![allow(dead_code)]
@@ -22,6 +21,7 @@ use std::sync::LazyLock;
 
 use nalgebra::DMatrix;
 
+use crate::gaze::calibration::{CalibrationSample, make_plan};
 use crate::types::{Monitor, Rect};
 
 pub(crate) const PX_CM: f64 = 53.0 / 1920.0;
@@ -326,6 +326,56 @@ pub(crate) fn grid_dataset(
     (synth_features(&p, rng, noise, &options), p, groups)
 }
 
+/// The keyword arguments of `calibration_samples`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SampleOptions<'a> {
+    pub per_point: usize,
+    pub camera_x: f64,
+    pub points_per_monitor: usize,
+    pub panels: Option<&'a [Panel]>,
+}
+
+impl Default for SampleOptions<'_> {
+    fn default() -> Self {
+        SampleOptions {
+            per_point: 20,
+            camera_x: 1920.0,
+            points_per_monitor: 9,
+            panels: None,
+        }
+    }
+}
+
+/// Samples as the calibration collector would record them for `make_plan(monitors)`.
+pub(crate) fn calibration_samples(
+    monitors: &[Monitor],
+    rng: &mut Rng,
+    noise: f64,
+    options: &SampleOptions,
+) -> Vec<CalibrationSample> {
+    let plan = make_plan(monitors, options.points_per_monitor, 0.1).expect("a valid plan");
+    let synth = SynthOptions {
+        camera_x: options.camera_x,
+        panels: options.panels,
+        ..SynthOptions::default()
+    };
+    let mut samples = Vec::new();
+    for t in plan {
+        let target = points_matrix(&vec![(t.x, t.y); options.per_point]);
+        let feats = synth_features(&target, rng, noise, &synth);
+        for i in 0..feats.nrows() {
+            samples.push(CalibrationSample::new(
+                row_vec(&feats, i),
+                t.x,
+                t.y,
+                t.monitor_index,
+                t.point_id,
+            ));
+        }
+    }
+    samples
+}
+
 /// Uniform points on the monitors, avoiding the outer `margin` (5 %: like real use).
 pub(crate) fn random_points(
     monitors: &[Monitor],
@@ -340,6 +390,14 @@ pub(crate) fn random_points(
         .map(|i| monitors[idx[i]].rect.denormalize(nx[i], ny[i]))
         .collect();
     points_matrix(&points)
+}
+
+/// Points in the outer (left) `fraction` of `rect`, top to bottom.
+pub(crate) fn outer_strip(rect: Rect, rng: &mut Rng, n: usize, fraction: f64) -> DMatrix<f64> {
+    let left = f64::from(rect.x);
+    let xs = rng.uniform_vec(left, left + fraction * f64::from(rect.w), n);
+    let ys = rng.uniform_vec(f64::from(rect.y), f64::from(rect.bottom()), n);
+    points_matrix(&xs.into_iter().zip(ys).collect::<Vec<_>>())
 }
 
 /// Points `cm` below the bottom edge of the monitors (a phone or papers on the desk).
