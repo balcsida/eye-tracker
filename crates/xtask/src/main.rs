@@ -1,6 +1,7 @@
 //! `cargo xtask <command>`: developer tooling (ports of `scripts/*.py`).
 
 mod build_site;
+mod check_privacy;
 mod fetch_models;
 mod gen_config_docs;
 mod make_icons;
@@ -24,7 +25,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Fail if the app crate contains network code or writes frames to disk.
-    CheckPrivacy,
+    CheckPrivacy(check_privacy::Args),
     /// Download and verify the bundled face models.
     FetchModels(fetch_models::Args),
     /// Generate docs/configuration.md from the settings metadata.
@@ -43,8 +44,9 @@ fn main() {
         Command::GenConfigDocs(args) => gen_config_docs::main(&args),
         Command::MakeIcons(args) => make_icons::main(&args),
         Command::BuildSite(args) => build_site::main(&args),
-        Command::CheckPrivacy | Command::SmokeTestBundle => {
-            // TODO(port): scripts/check_privacy.py, scripts/smoke_test_bundle.py
+        Command::CheckPrivacy(args) => check_privacy::main(&args),
+        Command::SmokeTestBundle => {
+            // TODO(port): scripts/smoke_test_bundle.py
             eprintln!("not ported yet");
             1
         }
