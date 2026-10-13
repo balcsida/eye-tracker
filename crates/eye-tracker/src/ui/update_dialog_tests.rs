@@ -16,8 +16,8 @@ use std::collections::HashMap;
 use super::*;
 use crate::REPO_URL;
 use crate::config::Settings;
-use crate::platform::autostart::{AutostartError, Status};
-use crate::ui::settings_dialog::{AutostartBackend, SettingsDialog};
+use crate::platform::autostart::AutostartBackend;
+use crate::ui::settings_dialog::SettingsDialog;
 use crate::update::release::{Asset, ReleaseInfo, download_url};
 
 const TAG: &str = "v0.2.2";
@@ -162,14 +162,11 @@ impl AutostartBackend for NoAutostart {
     fn is_enabled(&self) -> bool {
         false
     }
-    fn enable(&self) -> Result<(), AutostartError> {
-        Err(AutostartError("unsupported".into()))
+    fn enable(&self, _background: bool) -> Result<(), Box<dyn std::error::Error>> {
+        Err("unsupported".into())
     }
-    fn disable(&self) -> Result<(), AutostartError> {
-        Err(AutostartError("unsupported".into()))
-    }
-    fn status(&self) -> Status {
-        Status::Disabled
+    fn disable(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Err("unsupported".into())
     }
 }
 

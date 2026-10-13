@@ -14,7 +14,7 @@
 //! * `test_tray_uses_the_platform_autostart_module`'s patching of the real
 //!   `platform::autostart` functions: Rust cannot patch a module, and the real functions write
 //!   login items. The notification rules it covers run against a fake backend, and
-//!   `PlatformAutostart` is only checked to implement `AutostartBackend`.
+//!   `SystemAutostart` is only checked to implement `AutostartBackend`.
 //! * Anything that needs a real tray (`tray.show()` on a desktop, a popped-up menu, a shown
 //!   notification, the `tray-icon`/`ksni`/`notify-rust` bindings): the native backends are
 //!   exercised on a desktop only. `test_tray_notify_without_tray_is_quiet` runs against a fake
@@ -22,12 +22,14 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::error::Error;
 use std::rc::Rc;
 
 use serde_json::json;
 
 use super::*;
 use crate::config::Settings;
+use crate::platform::autostart::Status as AutostartState;
 use crate::platform::hotkeys::{format_hotkey, parse_hotkey};
 
 use TrackingState as S;
@@ -786,7 +788,7 @@ fn test_tray_autostart_failure_is_reported() {
 fn test_tray_uses_the_platform_autostart_module() {
     // The real module writes login items, so it is only checked to fit the tray; the rules
     // for its errors run against a fake that fails like it.
-    let _platform: Box<dyn AutostartBackend> = Box::new(PlatformAutostart);
+    let _platform: Box<dyn AutostartBackend> = Box::new(SystemAutostart);
     let (backend, log) = fake_autostart();
     log.borrow_mut().fail =
         Some("Could not enable start at login: registry is read-only".to_string());
@@ -903,10 +905,12 @@ fn test_autostart_status_helper_tolerates_old_backends() {
 #[test]
 fn test_taskbar_theme_is_only_read_from_the_registry_on_windows() {
     // Regression (packaging-02): other systems stay away from the registry.
-    assert_eq!(
-        windows_personalize_value_on(false, "SystemUsesLightTheme"),
-        None
-    );
+    if !cfg!(windows) {
+        assert_eq!(
+            crate::ui::util::windows_personalize_value("SystemUsesLightTheme"),
+            None
+        );
+    }
     let _dark: bool = system_tray_is_dark();
 }
 

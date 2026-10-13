@@ -233,8 +233,12 @@ const DISRUPTIVE_AWAY_ACTIONS: [&str; 3] = ["lock", "lock_and_display_off", "dis
 /// finished (see `DISRUPTIVE_AWAY_ACTIONS`). The countdown toast announces this
 /// one, so it never says "Locking" before a mere notification.
 pub fn effective_away_action(settings: &Settings) -> &str {
-    let action = settings.presence.action.as_str();
-    if !settings.general.first_run_done && DISRUPTIVE_AWAY_ACTIONS.contains(&action) {
+    away_action_for(&settings.presence.action, settings.general.first_run_done)
+}
+
+/// [`effective_away_action`] of the `presence.action` and `general.first_run_done` values.
+pub fn away_action_for(action: &str, first_run_done: bool) -> &str {
+    if !first_run_done && DISRUPTIVE_AWAY_ACTIONS.contains(&action) {
         return "notify";
     }
     action
@@ -3319,7 +3323,8 @@ impl Controller {
         }
     }
 
-    fn show_curtain(&mut self, visible: bool) {
+    /// Cover the screens (or stop covering them): what the shoulder guard does.
+    pub(crate) fn show_curtain(&mut self, visible: bool) {
         if visible == self.curtain {
             return;
         }

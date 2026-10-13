@@ -10,8 +10,8 @@
 //!   distributions is gone with the Python environment (see the module docs).
 //! * The Qt assertions of `test_collect_report_structure` (`qt.platform_plugin == "offscreen"`,
 //!   `monitors.virtual is True`) and the `env` fixture's `qapp`: there is no Qt; the report has a
-//!   `ui` section instead, and the monitors come from a fake host because
-//!   `platform::monitors()` is still a stand-in in `diagnostics.rs`.
+//!   `ui` section instead, and the monitors come from a fake host so that the assertions do not
+//!   depend on this machine's displays.
 //! * `diagnostics._redact(None) is None` of `test_redact`: `redact` takes a `&str`; absent values
 //!   are `Option::map`ped by the callers.
 //! * `test_run_bench_errors` has no `ValueError`/`CameraError` classes to match: they are

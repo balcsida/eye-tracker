@@ -178,6 +178,11 @@ impl AboutDialog {
         self.copied = true;
     }
 
+    /// The dialog's window.
+    pub fn viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("about")
+    }
+
     /// The window: titled, with the app icon.
     pub fn viewport_builder() -> egui::ViewportBuilder {
         let builder = egui::ViewportBuilder::default()
@@ -204,7 +209,7 @@ impl AboutDialog {
         let mut close = false;
         let copy_text = self.copy_button_text();
         ctx.show_viewport_immediate(
-            ViewportId::from_hash_of("about"),
+            Self::viewport_id(),
             Self::viewport_builder(),
             |ui, _class| {
                 close = ui.input(|i| i.viewport().close_requested());

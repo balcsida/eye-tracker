@@ -22,15 +22,18 @@
 //! backends deliver clicks through channels) and runs the returned actions.
 
 use std::collections::HashMap;
-use std::error::Error;
 
 use serde_json::Value;
 
+use super::util::{
+    ACCENT, ACCENT_LIGHT, DANGER, SUCCESS, WARNING, autostart_status, elide, format_cpu,
+    format_fps, parse_hotkey_text, system_tray_is_dark,
+};
 use crate::cli::cli_command_text;
 use crate::config::Settings;
 use crate::panes::worker::monotonic;
-use crate::platform::autostart::{self as platform_autostart, Status as AutostartState};
-use crate::platform::hotkeys::{Hotkey, format_hotkey, parse_hotkey};
+use crate::platform::autostart::{self as platform_autostart, AutostartBackend, SystemAutostart};
+use crate::platform::hotkeys::{Hotkey, format_hotkey};
 use crate::types::TrackingState;
 use crate::update::fetch::supported as update_supported;
 use crate::{APP_NAME, APP_SLUG};
@@ -81,13 +84,6 @@ const PANES_TIP: &str = "Experimental: keyboard focus also follows your gaze bet
 of tmux, WezTerm and Windows Terminal";
 const PREVIEW_TIP: &str = "See what the camera sees (never saved)";
 
-// TODO(integrator): replace with super::util::{ACCENT, ACCENT_LIGHT, SUCCESS, WARNING, DANGER}
-const ACCENT: &str = "#6366F1";
-const ACCENT_LIGHT: &str = "#818CF8";
-const SUCCESS: &str = "#34D399";
-const WARNING: &str = "#F59E0B";
-const DANGER: &str = "#EF4444";
-
 /// The colour of the status line's dot for a tracking state.
 pub fn status_color(state: TrackingState) -> &'static str {
     match state {
@@ -102,165 +98,6 @@ pub fn status_color(state: TrackingState) -> &'static str {
         TrackingState::Yielded => MUTED_GREY,
         TrackingState::CameraError => DANGER,
     }
-}
-
-// ------------------------------------------------------------------------ util stand-ins
-// TODO(integrator): replace with super::util::elide
-/// Shorten `text` to at most `limit` characters with a trailing ellipsis.
-fn elide(text: &str, limit: usize) -> String {
-    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if text.chars().count() <= limit {
-        return text;
-    }
-    let kept: String = text.chars().take(limit.saturating_sub(1)).collect();
-    format!("{}…", kept.trim_end())
-}
-
-// TODO(integrator): replace with super::util::format_fps
-/// `"12 fps"`, `"0.5 fps"` (one decimal only below 1 fps).
-fn format_fps(fps: f64) -> String {
-    if !fps.is_finite() || fps <= 0.0 {
-        return "0 fps".to_string();
-    }
-    if fps < 0.95 {
-        return format!("{fps:.1} fps");
-    }
-    format!("{} fps", fps.round_ties_even())
-}
-
-// TODO(integrator): replace with super::util::format_cpu
-/// `"CPU 0.6 %"` (share of the whole machine).
-fn format_cpu(percent: f64) -> String {
-    let percent = if !percent.is_finite() || percent < 0.0 {
-        0.0
-    } else {
-        percent
-    };
-    format!("CPU {percent:.1} %")
-}
-
-// TODO(integrator): replace with super::util::parse_hotkey_text
-/// `parse_hotkey` that returns `None` instead of failing (empty or invalid text).
-fn parse_hotkey_text(text: &str) -> Option<Hotkey> {
-    if text.trim().is_empty() {
-        return None;
-    }
-    parse_hotkey(text).ok()
-}
-
-// TODO(integrator): replace with super::util::system_tray_is_dark
-/// Best guess whether the taskbar / panel behind the tray icon is dark.
-///
-/// The tray icon is monochrome, so it has to pick a glyph colour. (macOS does not need this:
-/// its menu-bar icon is a template image the system tints.)
-///
-/// * Windows: the taskbar follows `SystemUsesLightTheme`, which is separate from the app theme.
-/// * GNOME: the top bar is dark whatever the theme.
-/// * otherwise: dark. The icons also draw a faint contrasting halo, so a wrong guess still
-///   leaves a readable icon.
-pub fn system_tray_is_dark() -> bool {
-    if cfg!(windows) {
-        let value = windows_personalize_value_on(cfg!(windows), "SystemUsesLightTheme");
-        return value != Some(1); // missing value: Windows 10's default dark taskbar
-    }
-    true
-}
-
-// TODO(integrator): replace with super::util::windows_personalize_value
-/// A DWORD under `HKCU\...\Themes\Personalize`; `None` when unreadable.
-///
-/// `windows` says whether the OS is Windows, so the registry is never touched elsewhere (the
-/// Python tests patched `sys.platform` instead).
-fn windows_personalize_value_on(windows: bool, name: &str) -> Option<u32> {
-    if !windows {
-        return None;
-    }
-    #[cfg(windows)]
-    {
-        read_personalize_dword(name)
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = name;
-        None
-    }
-}
-
-#[cfg(windows)]
-fn read_personalize_dword(name: &str) -> Option<u32> {
-    use windows::Win32::Foundation::ERROR_SUCCESS;
-    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
-    use windows::core::{HSTRING, PCWSTR};
-
-    let subkey = HSTRING::from(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-    let name = HSTRING::from(name);
-    let mut data = 0u32;
-    let mut size = std::mem::size_of::<u32>() as u32;
-    // SAFETY: both strings are NUL-terminated and outlive the call; `data` and `size` are valid
-    // out pointers of the sizes announced.
-    let status = unsafe {
-        RegGetValueW(
-            HKEY_CURRENT_USER,
-            &subkey,
-            PCWSTR(name.as_ptr()),
-            RRF_RT_REG_DWORD,
-            None,
-            Some((&mut data as *mut u32).cast()),
-            Some(&mut size),
-        )
-    };
-    (status == ERROR_SUCCESS).then_some(data)
-}
-
-// ----------------------------------------------------------------------------- autostart
-/// What the tray needs from [`platform::autostart`](crate::platform::autostart) (tests fake it).
-pub trait AutostartBackend {
-    fn is_supported(&self) -> bool;
-    fn is_enabled(&self) -> bool;
-    /// `None` when the backend cannot say more than "enabled or not".
-    fn status(&self) -> Option<AutostartState> {
-        None
-    }
-    /// An [`AutostartError`](platform_autostart::AutostartError) carries a message meant for
-    /// the user; any other error is reported generically.
-    fn enable(&self, background: bool) -> Result<(), Box<dyn Error>>;
-    fn disable(&self) -> Result<(), Box<dyn Error>>;
-}
-
-/// The real login item of this OS.
-pub struct PlatformAutostart;
-
-impl AutostartBackend for PlatformAutostart {
-    fn is_supported(&self) -> bool {
-        platform_autostart::is_supported()
-    }
-
-    fn is_enabled(&self) -> bool {
-        platform_autostart::is_enabled(None)
-    }
-
-    fn status(&self) -> Option<AutostartState> {
-        Some(platform_autostart::status(None))
-    }
-
-    fn enable(&self, background: bool) -> Result<(), Box<dyn Error>> {
-        platform_autostart::enable(background, None).map_err(Into::into)
-    }
-
-    fn disable(&self) -> Result<(), Box<dyn Error>> {
-        platform_autostart::disable(None).map_err(Into::into)
-    }
-}
-
-// TODO(integrator): replace with super::util::autostart_status
-/// `status().as_str()` of an autostart backend: `"enabled"`, `"disabled"`, `"stale"` or
-/// `"other-profile"`; `""` when the backend has no status (only the plain "enabled or not" view
-/// is known then).
-fn autostart_status(backend: &dyn AutostartBackend) -> String {
-    backend
-        .status()
-        .map(|status| status.as_str().to_string())
-        .unwrap_or_default()
 }
 
 /// Menu text and tooltip of "Start at login" by [`autostart_status`] value.
@@ -400,7 +237,7 @@ impl TrayInputs {
                 "toggle_privacy" => &settings.toggle_privacy,
                 _ => &settings.recalibrate,
             };
-            if let Some(hotkey) = parse_hotkey_text(text) {
+            if let Some(hotkey) = parse_hotkey_text(Some(text)) {
                 hotkeys.insert(name.to_string(), hotkey);
             }
         }
@@ -828,7 +665,7 @@ impl Tray {
     ///
     /// * `backend`: draws the tray ([`native_backend`]).
     /// * `render_icon`: the icon of a state, see [`IconRenderer`].
-    /// * `autostart`: the start-at-login backend ([`PlatformAutostart`]).
+    /// * `autostart`: the start-at-login backend ([`SystemAutostart`]).
     /// * `clock`: monotonic seconds; only used by [`Tray::mute_notifications`] and the clicks.
     pub fn new(
         backend: Box<dyn TrayBackend>,
@@ -868,7 +705,7 @@ impl Tray {
         Tray::new(
             backend,
             render_icon,
-            Box::new(PlatformAutostart),
+            Box::new(SystemAutostart),
             Box::new(monotonic),
             inputs,
         )
@@ -1310,43 +1147,10 @@ fn send_notification(title: &str, message: &str, critical: bool) {
     }
 }
 
-// TODO(integrator): replace with icons::status_dot_icon
 /// The coloured dot in front of the status line (16 × 16, straight-alpha RGBA).
 #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
-fn status_dot(color: &str) -> Option<tiny_skia::Pixmap> {
-    let hex = color.trim_start_matches('#');
-    let channel = |at: usize| u8::from_str_radix(hex.get(at..at + 2)?, 16).ok();
-    let (red, green, blue) = (channel(0)?, channel(2)?, channel(4)?);
-    let mut pixmap = tiny_skia::Pixmap::new(16, 16)?;
-    let mut paint = tiny_skia::Paint::default();
-    paint.set_color_rgba8(red, green, blue, 255);
-    paint.anti_alias = true;
-    let circle = tiny_skia::PathBuilder::from_circle(8.0, 8.0, 5.0)?;
-    pixmap.fill_path(
-        &circle,
-        &paint,
-        tiny_skia::FillRule::Winding,
-        tiny_skia::Transform::identity(),
-        None,
-    );
-    Some(pixmap)
-}
-
-/// [`status_dot`] as straight-alpha RGBA.
-#[cfg(any(windows, target_os = "macos"))]
-fn status_dot_rgba(color: &str) -> Option<(u32, u32, Vec<u8>)> {
-    let pixmap = status_dot(color)?;
-    let mut rgba = Vec::with_capacity(pixmap.data().len());
-    for pixel in pixmap.pixels() {
-        let straight = pixel.demultiply();
-        rgba.extend_from_slice(&[
-            straight.red(),
-            straight.green(),
-            straight.blue(),
-            straight.alpha(),
-        ]);
-    }
-    Some((pixmap.width(), pixmap.height(), rgba))
+fn status_dot(color: &str) -> Option<super::icons::Rgba> {
+    super::icons::status_dot_icon(color).best(16).cloned()
 }
 
 #[cfg(any(windows, target_os = "macos"))]
@@ -1372,7 +1176,7 @@ mod native {
 
     use super::{
         BackendEvent, IconClick, ItemId, MENU_ON_CLICK, MenuEntry, MenuItem, TrayBackend,
-        TrayImage, TrayModel, send_notification, status_dot_rgba,
+        TrayImage, TrayModel, send_notification, status_dot,
     };
 
     enum Widget {
@@ -1385,9 +1189,8 @@ mod native {
         fn create(item: &MenuItem, color: &str) -> Widget {
             let id = MenuId::new(item.id.key());
             if item.id == ItemId::Status {
-                let icon = status_dot_rgba(color).and_then(|(width, height, rgba)| {
-                    MenuIcon::from_rgba(rgba, width, height).ok()
-                });
+                let icon = status_dot(color)
+                    .and_then(|dot| MenuIcon::from_rgba(dot.data, dot.width, dot.height).ok());
                 Widget::Status(IconMenuItem::with_id(
                     id,
                     &item.text,
@@ -1436,9 +1239,8 @@ mod native {
                 Widget::Status(widget) => {
                     widget.set_text(&item.text);
                     widget.set_enabled(item.enabled);
-                    let icon = status_dot_rgba(color).and_then(|(width, height, rgba)| {
-                        MenuIcon::from_rgba(rgba, width, height).ok()
-                    });
+                    let icon = status_dot(color)
+                        .and_then(|dot| MenuIcon::from_rgba(dot.data, dot.width, dot.height).ok());
                     widget.set_icon(icon);
                 }
             }
@@ -1688,6 +1490,16 @@ mod sni {
         vec![keys]
     }
 
+    /// The status dot as a PNG (what DBusMenu takes as an item icon).
+    fn dot_png(dot: &crate::ui::icons::Rgba) -> Option<Vec<u8>> {
+        let mut pixmap = tiny_skia::Pixmap::new(dot.width, dot.height)?;
+        for (pixel, rgba) in pixmap.pixels_mut().iter_mut().zip(dot.data.chunks_exact(4)) {
+            *pixel =
+                tiny_skia::ColorU8::from_rgba(rgba[0], rgba[1], rgba[2], rgba[3]).premultiply();
+        }
+        pixmap.encode_png().ok()
+    }
+
     impl SniTray {
         fn menu_item(&self, item: &MenuItem) -> ksni::MenuItem<SniTray> {
             let id = item.id;
@@ -1709,7 +1521,7 @@ mod sni {
             } else {
                 let icon_data = if item.id == ItemId::Status {
                     status_dot(self.model.status_color)
-                        .and_then(|pixmap| pixmap.encode_png().ok())
+                        .and_then(|dot| dot_png(&dot))
                         .unwrap_or_default()
                 } else {
                     Vec::new()

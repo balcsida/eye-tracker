@@ -14,6 +14,8 @@
 //!   its button click (the egui button pushes [`SettingsAction::SetupRequested`]).
 //! * The calibration window tests belong to `calibration_window_tests.rs`, the wizard tests
 //!   to `wizard_tests.rs`.
+//! * `test_diagnostics_module_absence_is_handled`: the report module is always built in, so
+//!   [`load_diagnostics_text`] has no fallback text for a missing one.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
@@ -23,7 +25,7 @@ use serde_json::json;
 
 use super::*;
 use crate::config::Settings;
-use crate::platform::autostart::{AutostartError, Status};
+use crate::platform::autostart::{AutostartBackend, AutostartError, Status};
 use crate::platform::base::{GenericPlatform, PlatformServices};
 use crate::platform::hotkeys::{
     Hotkey, HotkeyArg, HotkeyCallback, HotkeyError, HotkeyManager, UnsupportedHotkeyManager,
@@ -62,31 +64,31 @@ impl AutostartBackend for FakeAutostart {
     fn is_enabled(&self) -> bool {
         self.0.lock().enabled
     }
-    fn enable(&self) -> Result<(), AutostartError> {
+    fn enable(&self, _background: bool) -> Result<(), Box<dyn std::error::Error>> {
         let mut log = self.0.lock();
         log.calls.push("enable".into());
         if let Some(fail) = &log.fail {
-            return Err(AutostartError(fail.clone()));
+            return Err(Box::new(AutostartError(fail.clone())));
         }
         log.enabled = true;
         Ok(())
     }
-    fn disable(&self) -> Result<(), AutostartError> {
+    fn disable(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut log = self.0.lock();
         log.calls.push("disable".into());
         if let Some(fail) = &log.fail {
-            return Err(AutostartError(fail.clone()));
+            return Err(Box::new(AutostartError(fail.clone())));
         }
         log.enabled = false;
         Ok(())
     }
-    fn status(&self) -> Status {
+    fn status(&self) -> Option<Status> {
         let log = self.0.lock();
-        if log.enabled {
+        Some(if log.enabled {
             Status::Enabled
         } else {
             log.idle_status
-        }
+        })
     }
 }
 
@@ -751,11 +753,6 @@ fn test_diagnostics_failure_is_shown_not_raised() {
     e.dialog.refresh_diagnostics();
     e.controller.run(&mut e.dialog);
     assert!(e.dialog.diagnostics_text().contains("boom"));
-}
-
-#[test]
-fn test_diagnostics_module_absence_is_handled() {
-    assert!(load_diagnostics_text().contains("not available"));
 }
 
 #[test]

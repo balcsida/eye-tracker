@@ -153,7 +153,8 @@ impl CurtainWindow {
         key == Key::Escape
     }
 
-    fn viewport_id(index: usize) -> ViewportId {
+    /// The viewport of the curtain window with this index.
+    pub fn viewport_id(index: usize) -> ViewportId {
         ViewportId::from_hash_of(("privacy-curtain", index))
     }
 

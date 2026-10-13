@@ -263,6 +263,56 @@ pub fn location() -> Option<String> {
     Host::real().location()
 }
 
+// ------------------------------------------------------------------- UI seam
+
+/// What the app, the tray, the settings and the setup assistant need from this module (tests
+/// fake it).
+pub trait AutostartBackend {
+    fn is_supported(&self) -> bool;
+    fn is_enabled(&self) -> bool;
+    /// `None` when the backend cannot say more than "enabled or not".
+    fn status(&self) -> Option<Status> {
+        None
+    }
+    /// An [`AutostartError`] carries a message meant for the user; any other error is reported
+    /// generically.
+    fn enable(&self, background: bool) -> Result<(), Box<dyn std::error::Error>>;
+    fn disable(&self) -> Result<(), Box<dyn std::error::Error>>;
+    /// [`refresh`]: point the login item at this copy if it moved. Returns whether it changed.
+    fn refresh(&self) -> bool {
+        false
+    }
+}
+
+/// The real login item of this process's settings profile.
+pub struct SystemAutostart;
+
+impl AutostartBackend for SystemAutostart {
+    fn is_supported(&self) -> bool {
+        is_supported()
+    }
+
+    fn is_enabled(&self) -> bool {
+        is_enabled(None)
+    }
+
+    fn status(&self) -> Option<Status> {
+        Some(status(None))
+    }
+
+    fn enable(&self, background: bool) -> Result<(), Box<dyn std::error::Error>> {
+        enable(background, None).map_err(Into::into)
+    }
+
+    fn disable(&self) -> Result<(), Box<dyn std::error::Error>> {
+        disable(None).map_err(Into::into)
+    }
+
+    fn refresh(&self) -> bool {
+        refresh(None)
+    }
+}
+
 impl Host {
     fn launch_command(&self, background: bool, config_dir: Option<&Path>) -> Vec<String> {
         // The profile of the running process is replaced by the one asked for.

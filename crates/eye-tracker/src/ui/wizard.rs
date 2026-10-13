@@ -22,11 +22,12 @@ use std::sync::Arc;
 use egui::{Color32, RichText};
 
 use super::settings_dialog::{
-    AutostartBackend, CameraProbe, DANGER, SUCCESS, WARNING, camera_in_use, camera_label,
-    hint_label, meta, rich_text,
+    CameraProbe, camera_in_use, camera_label, hint_label, meta, rich_text,
 };
+use super::util::egui_colors::{ACCENT, DANGER, SUCCESS, WARNING};
 use crate::APP_NAME;
 use crate::config::{Platform, Settings};
+use crate::platform::autostart::AutostartBackend;
 use crate::platform::base::PlatformServices;
 use crate::platform::hotkeys::{format_hotkey, parse_hotkey};
 use crate::types::{Observation, TrackingState};
@@ -768,7 +769,7 @@ impl FirstRunWizard {
             return;
         }
         let result = if wanted {
-            self.autostart.enable()
+            self.autostart.enable(true)
         } else {
             self.autostart.disable()
         };
@@ -783,6 +784,11 @@ impl FirstRunWizard {
     }
 
     // ============================================================== drawing
+    /// The wizard's window.
+    pub fn viewport_id() -> egui::ViewportId {
+        egui::ViewportId::from_hash_of("eye-tracker-setup")
+    }
+
     /// Draw the wizard in its own window; returns what it asks the controller to do.
     pub fn show(&mut self, ctx: &egui::Context, inputs: &WizardInputs) -> Vec<WizardAction> {
         self.poll_cameras();
@@ -790,11 +796,9 @@ impl FirstRunWizard {
             .with_title(format!("{APP_NAME} setup"))
             .with_inner_size([680.0, 600.0])
             .with_min_inner_size([640.0, 560.0]);
-        ctx.show_viewport_immediate(
-            egui::ViewportId::from_hash_of("eye-tracker-setup"),
-            builder,
-            |ui, _class| self.draw(ui, inputs.now),
-        );
+        ctx.show_viewport_immediate(Self::viewport_id(), builder, |ui, _class| {
+            self.draw(ui, inputs.now)
+        });
         if matches!(self.current, PAGE_CAMERA | PAGE_PERMISSIONS) {
             // The status is refreshed twice a second.
             ctx.request_repaint_after(std::time::Duration::from_millis(500));
@@ -1086,7 +1090,7 @@ fn draw_welcome(ui: &mut egui::Ui) {
         ))
         .wrap(),
     );
-    let accent = super::settings_dialog::ACCENT;
+    let accent = ACCENT;
     egui::Frame::new()
         .fill(accent.linear_multiply(0.08))
         .stroke(egui::Stroke::new(1.0, accent.linear_multiply(0.30)))
@@ -1116,7 +1120,7 @@ fn draw_illustration(ui: &mut egui::Ui) {
     );
     let painter = ui.painter_at(rect);
     let text = ui.visuals().text_color();
-    let accent = super::settings_dialog::ACCENT;
+    let accent = ACCENT;
     let (mon_w, mon_h, gap) = (150.0, 88.0, 22.0);
     let x0 = rect.left() + (rect.width() - 2.0 * mon_w - gap) / 2.0;
     let y0 = rect.top() + 6.0;

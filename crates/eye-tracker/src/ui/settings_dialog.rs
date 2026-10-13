@@ -24,24 +24,19 @@ use std::thread::JoinHandle;
 
 use crossbeam_channel::Receiver;
 use egui::text::LayoutJob;
-use egui::{Color32, RichText, TextFormat};
+use egui::{RichText, TextFormat};
 use serde_json::Value;
 
+use super::util::egui_colors::{ACCENT, DANGER, WARNING};
 use crate::cli::cli_command_text;
 use crate::config::{SettingRow, Settings, describe_settings};
 use crate::engine::scheduler::PROFILES;
 use crate::gaze::store::CalibrationData;
-use crate::platform::autostart::{self, AutostartError, Status};
+use crate::platform::autostart::{AutostartBackend, Status};
 use crate::platform::hotkeys::{Hotkey, HotkeyArg, HotkeyManager, format_hotkey, parse_hotkey};
 use crate::types::TrackingState;
 use crate::vision::camera::{CameraInfo, device_index, list_cameras};
 use crate::{APP_NAME, paths};
-
-// The palette of ui/util.py (ACCENT, SUCCESS, WARNING, DANGER).
-pub(crate) const ACCENT: Color32 = Color32::from_rgb(0x63, 0x66, 0xF1);
-pub(crate) const SUCCESS: Color32 = Color32::from_rgb(0x34, 0xD3, 0x99);
-pub(crate) const WARNING: Color32 = Color32::from_rgb(0xF5, 0x9E, 0x0B);
-pub(crate) const DANGER: Color32 = Color32::from_rgb(0xEF, 0x44, 0x44);
 
 /// Hotkey actions shown on the Hotkeys page: (settings field, label).
 pub const HOTKEY_ACTIONS: [(&str, &str); 3] = [
@@ -50,7 +45,7 @@ pub const HOTKEY_ACTIONS: [(&str, &str); 3] = [
     ("recalibrate", "Recalibrate"),
 ];
 
-/// Explanation under "Start at login" by [`autostart::Status`] value.
+/// Explanation under "Start at login" by [`Status`] value.
 fn autostart_note(status: &str) -> String {
     match status {
         "stale" => format!(
@@ -232,45 +227,10 @@ pub fn camera_in_use(applied: &Settings) -> BTreeSet<u32> {
 
 /// The `doctor` report as text, without a camera probe (so no camera light flashes).
 ///
-/// `crate::diagnostics` has no report in this build yet, so this is the Python fallback for
-/// a build without the report module.
-pub fn load_diagnostics_text() -> String {
-    format!(
-        "The diagnostics report is not available in this build.\n\
-         Run '{}' in a terminal instead.",
-        cli_command_text(&["doctor"])
-    )
-}
-
-// =================================================================== autostart
-/// What the dialogs need from [`crate::platform::autostart`] (tests fake it).
-pub trait AutostartBackend {
-    fn is_supported(&self) -> bool;
-    fn is_enabled(&self) -> bool;
-    fn enable(&self) -> Result<(), AutostartError>;
-    fn disable(&self) -> Result<(), AutostartError>;
-    fn status(&self) -> Status;
-}
-
-/// The real start-at-login entry of this process's settings profile, started in the background.
-pub struct SystemAutostart;
-
-impl AutostartBackend for SystemAutostart {
-    fn is_supported(&self) -> bool {
-        autostart::is_supported()
-    }
-    fn is_enabled(&self) -> bool {
-        autostart::is_enabled(None)
-    }
-    fn enable(&self) -> Result<(), AutostartError> {
-        autostart::enable(true, None)
-    }
-    fn disable(&self) -> Result<(), AutostartError> {
-        autostart::disable(None)
-    }
-    fn status(&self) -> Status {
-        autostart::status(None)
-    }
+/// The controller's hotkey manager, when there is one, tells the report which hotkeys the OS
+/// accepted.
+pub fn load_diagnostics_text(hotkey_manager: Option<&dyn HotkeyManager>) -> String {
+    crate::diagnostics::format_report(&crate::diagnostics::collect_report(false, hotkey_manager))
 }
 
 // =================================================================== camera probe
@@ -2369,7 +2329,7 @@ impl SettingsDialog {
             return true;
         }
         let result = if wanted {
-            self.autostart.enable()
+            self.autostart.enable(true)
         } else {
             self.autostart.disable()
         };
@@ -2388,7 +2348,7 @@ impl SettingsDialog {
     /// Explain an unchecked box whose login item exists but does not start this copy.
     fn refresh_autostart_note(&mut self) {
         let status = if self.autostart_supported {
-            self.autostart.status().as_str()
+            self.autostart.status().map_or("", Status::as_str)
         } else {
             ""
         };
@@ -2479,6 +2439,11 @@ impl SettingsDialog {
     }
 
     // ============================================================== drawing
+    /// The dialog's window.
+    pub fn viewport_id() -> egui::ViewportId {
+        egui::ViewportId::from_hash_of("eye-tracker-settings")
+    }
+
     /// Draw the dialog in its own window; returns what it asks the controller to do.
     pub fn show(
         &mut self,
@@ -2491,11 +2456,9 @@ impl SettingsDialog {
             .with_title(format!("{APP_NAME} Settings"))
             .with_inner_size([860.0, 640.0])
             .with_min_inner_size([760.0, 540.0]);
-        ctx.show_viewport_immediate(
-            egui::ViewportId::from_hash_of("eye-tracker-settings"),
-            builder,
-            |ui, _class| self.draw(ui, inputs),
-        );
+        ctx.show_viewport_immediate(Self::viewport_id(), builder, |ui, _class| {
+            self.draw(ui, inputs)
+        });
         if self.detecting {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }

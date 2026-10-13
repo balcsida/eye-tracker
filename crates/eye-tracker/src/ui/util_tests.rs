@@ -172,6 +172,18 @@ fn test_qcolor_parses_hex_and_clamps_alpha() {
 }
 
 #[test]
+fn test_egui_palette_matches_the_hex_palette() {
+    for (hex, egui) in [
+        (ACCENT, egui_colors::ACCENT),
+        (SUCCESS, egui_colors::SUCCESS),
+        (WARNING, egui_colors::WARNING),
+        (DANGER, egui_colors::DANGER),
+    ] {
+        assert_eq!(color32(qcolor(hex, None)), egui);
+    }
+}
+
+#[test]
 fn test_bgr_to_qimage_converts_colours() {
     let mut frame = Frame::filled(3, 2, [0, 0, 0]);
     frame.data[0..3].copy_from_slice(&[255, 0, 0]); // blue in BGR

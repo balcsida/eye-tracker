@@ -250,12 +250,7 @@ pub fn format_report(report: &Value) -> String {
 
 /// The monitors the OS reports.
 pub fn current_monitors() -> Vec<Monitor> {
-    monitors()
-}
-
-// TODO(integrator): replace with crate::platform::monitors()
-fn monitors() -> Vec<Monitor> {
-    Vec::new()
+    crate::platform::monitors()
 }
 
 // ------------------------------------------------------------------ real host

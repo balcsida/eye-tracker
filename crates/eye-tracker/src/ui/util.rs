@@ -20,6 +20,7 @@ use tiny_skia::{
 
 use crate::config::Settings;
 use crate::paths;
+use crate::platform::autostart::AutostartBackend;
 use crate::platform::hotkeys::{Hotkey, parse_hotkey};
 use crate::types::{Monitor, Rect};
 use crate::vision::Frame;
@@ -46,6 +47,16 @@ pub const TEXT_MUTED: &str = "#A0A8B8";
 pub const SUCCESS: &str = "#34D399";
 pub const WARNING: &str = "#F59E0B";
 pub const DANGER: &str = "#EF4444";
+
+/// The palette as egui colours, for widgets (the `#RRGGBB` constants above).
+pub mod egui_colors {
+    use egui::Color32;
+
+    pub const ACCENT: Color32 = Color32::from_rgb(0x63, 0x66, 0xF1);
+    pub const SUCCESS: Color32 = Color32::from_rgb(0x34, 0xD3, 0x99);
+    pub const WARNING: Color32 = Color32::from_rgb(0xF5, 0x9E, 0x0B);
+    pub const DANGER: Color32 = Color32::from_rgb(0xEF, 0x44, 0x44);
+}
 
 /// A straight (not premultiplied) RGBA colour.
 pub type Color8 = [u8; 4];
@@ -299,7 +310,7 @@ pub fn system_tray_is_dark() -> bool {
 
 /// A DWORD under `HKCU\...\Themes\Personalize`; `None` when unreadable.
 #[cfg(windows)]
-fn windows_personalize_value(name: &str) -> Option<u32> {
+pub(crate) fn windows_personalize_value(name: &str) -> Option<u32> {
     use std::ffi::c_void;
 
     use windows::Win32::Foundation::ERROR_SUCCESS;
@@ -325,9 +336,21 @@ fn windows_personalize_value(name: &str) -> Option<u32> {
     (status == ERROR_SUCCESS).then_some(value)
 }
 
+/// Other systems never touch a registry.
 #[cfg(not(windows))]
-fn windows_personalize_value(_name: &str) -> Option<u32> {
+pub(crate) fn windows_personalize_value(_name: &str) -> Option<u32> {
     None
+}
+
+// ------------------------------------------------------------------------- autostart
+/// `status().as_str()` of an autostart backend: `"enabled"`, `"disabled"`, `"stale"` or
+/// `"other-profile"`; `""` when the backend has no status (only the plain "enabled or not" view
+/// is known then).
+pub fn autostart_status(backend: &dyn AutostartBackend) -> String {
+    backend
+        .status()
+        .map(|status| status.as_str().to_string())
+        .unwrap_or_default()
 }
 
 // --------------------------------------------------------------------------- hotkeys

@@ -22,7 +22,7 @@
 //!   answer in time is left alone for a few seconds (window list and application-level handles
 //!   only), so polling it cannot stall the UI.
 //! * **App Nap.** A menu-bar app without visible windows is a candidate for App Nap, which
-//!   throttles its timers by seconds. [`MacPlatform::set_accessory_app`] therefore also opts out
+//!   throttles its timers by seconds. [`PlatformServices::set_accessory_app`] therefore also opts out
 //!   of it ([`MacPlatform::set_background_activity`]).
 //! * **Frameworks.** Every framework call goes through a small trait ([`Quartz`], [`AppKit`],
 //!   [`Accessibility`], [`CoreFoundation`], [`Foundation`], [`CameraAuthorization`], [`Host`])
@@ -682,20 +682,6 @@ impl MacPlatform {
         }
     }
 
-    /// Run as a menu-bar ("accessory") app: no Dock icon, no app menu, no App Nap.
-    ///
-    /// A menu-bar app without visible windows is exactly what App Nap throttles, so this also
-    /// calls [`set_background_activity`](PlatformServices::set_background_activity). Must be
-    /// called on the main thread after the UI toolkit created the application. Returns whether
-    /// the activation policy was set.
-    pub fn set_accessory_app(&self) -> bool {
-        self.set_background_activity(true);
-        let Some(appkit) = self.appkit.as_deref() else {
-            return false;
-        };
-        appkit.set_activation_policy(NS_ACTIVATION_POLICY_ACCESSORY)
-    }
-
     fn lock_screen_immediate(&self) -> bool {
         match self.host.lock_screen_immediate(LOGIN_FRAMEWORK) {
             Ok(0) => true,
@@ -945,8 +931,22 @@ impl PlatformServices for MacPlatform {
     /// Nothing to do: the UI toolkit already uses point coordinates, like Quartz and AX.
     ///
     /// The Dock icon is hidden by `LSUIElement` in the app bundle and, when running from
-    /// source, by [`MacPlatform::set_accessory_app`] after the application exists.
+    /// source, by [`PlatformServices::set_accessory_app`] after the application exists.
     fn prepare_process(&self) {}
+
+    /// Run as a menu-bar ("accessory") app: no Dock icon, no app menu, no App Nap.
+    ///
+    /// A menu-bar app without visible windows is exactly what App Nap throttles, so this also
+    /// calls [`set_background_activity`](PlatformServices::set_background_activity). Must be
+    /// called on the main thread after the UI toolkit created the application. Returns whether
+    /// the activation policy was set.
+    fn set_accessory_app(&self) -> bool {
+        self.set_background_activity(true);
+        let Some(appkit) = self.appkit.as_deref() else {
+            return false;
+        };
+        appkit.set_activation_policy(NS_ACTIVATION_POLICY_ACCESSORY)
+    }
 
     /// Opt out of App Nap while `active` (`true`), or allow it again.
     ///

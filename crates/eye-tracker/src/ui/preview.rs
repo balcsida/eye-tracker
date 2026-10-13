@@ -319,6 +319,11 @@ impl PreviewWindow {
         }
     }
 
+    /// The preview's window.
+    pub fn viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("camera-preview")
+    }
+
     /// The window: titled, resizable, with the app icon.
     pub fn viewport_builder() -> egui::ViewportBuilder {
         let icon = icons::app_icon();
@@ -345,7 +350,7 @@ impl PreviewWindow {
     fn draw(&mut self, ctx: &Context) {
         let frame_texture = self.frame_texture(ctx);
         let lock = self.lock_texture(ctx);
-        let id = ViewportId::from_hash_of("camera-preview");
+        let id = Self::viewport_id();
         let mut closed = false;
         let mut minimized = None;
         ctx.show_viewport_immediate(id, Self::viewport_builder(), |ui, _class| {

@@ -19,6 +19,7 @@ use tiny_skia::{LineCap, Paint, Path, PathBuilder, Pixmap, Stroke, Transform};
 use super::icons::{self, Rgba};
 use super::util;
 use crate::config::Settings;
+use crate::engine::controller::away_action_for;
 use crate::platform::PlatformServices;
 use crate::types::{Monitor, Rect, TrackingState, monitor_at};
 
@@ -57,16 +58,6 @@ fn cancels_countdown(state: TrackingState) -> bool {
 /// Seconds between repaints while a countdown runs (the Python tick of 250 ms).
 const TICK_S: f64 = 0.25;
 const FADE_S: f64 = 0.16;
-
-/// The walk-away action that really runs: the configured one, except that a lock or blanked
-/// displays only notify while the first-run setup is not finished. The countdown toast announces
-/// this one, so it never says "Locking" before a mere notification.
-fn effective_away_action(action: &str, first_run_done: bool) -> &str {
-    if !first_run_done && matches!(action, "lock" | "lock_and_display_off" | "display_off") {
-        return "notify";
-    }
-    action
-}
 
 /// The settings the toast reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -170,7 +161,7 @@ impl CountdownToast {
     /// The presence action being counted down to: `settings.presence.action`, or `"notify"` for
     /// a lock or blanked displays while the setup is unfinished.
     pub fn action(&self) -> &str {
-        effective_away_action(&self.settings.action, self.settings.first_run_done)
+        away_action_for(&self.settings.action, self.settings.first_run_done)
     }
 
     /// Whether a countdown is running (the toast is shown).

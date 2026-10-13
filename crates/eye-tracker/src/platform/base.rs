@@ -175,6 +175,13 @@ pub trait PlatformServices: Send + Sync {
     /// coordinates equal the native coordinates used by this trait (see `crate::types`).
     fn prepare_process(&self) {}
 
+    /// Run as a menu-bar ("accessory") app: no Dock icon or app menu (macOS); nothing
+    /// elsewhere. Called on the UI thread once the UI toolkit created the application. Returns
+    /// whether it took effect.
+    fn set_accessory_app(&self) -> bool {
+        false
+    }
+
     /// Feature matrix shown by `eye-tracker doctor` and the settings UI.
     ///
     /// Keys: `lock`, `display_off`, `wake_display`, `input_idle`, `key_idle`,
