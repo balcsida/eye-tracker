@@ -65,7 +65,7 @@ body:
     attributes:
       label: Eye Tracker version
       description: Shown in About, or run the command-line tool (see below) with `--version`.
-      placeholder: "0.2.0"
+      placeholder: "0.3.0"
     validations:
       required: true
 
@@ -79,7 +79,7 @@ body:
         - macOS disk image (.dmg)
         - Linux AppImage
         - Linux tarball (.tar.gz)
-        - From source (uv / pip)
+        - From source (cargo)
         - Other
     validations:
       required: true

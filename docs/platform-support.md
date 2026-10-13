@@ -187,7 +187,9 @@ these apps run** (for example `zoom`, `teams-for-linux`, `skypeforlinux`, `obs`)
 
 ### Packages
 
-The AppImage bundles its libraries. The program is a single static Rust binary that needs no Qt,
-no Python and no OpenCV; on X11 it talks to the X server itself (`x11rb`), on Wayland it runs through
-XWayland when that is available (see [Wayland](#wayland)). The tray icon uses the StatusNotifierItem
-D-Bus interface; GNOME shows it only with an AppIndicator extension.
+The face models are compiled into the executable, so the AppImage and the tarball hold no other
+library; the system's X11 or Wayland and OpenGL libraries are loaded at run time. The program is a
+single Rust binary that needs no Qt, no Python and no OpenCV; on X11 it talks to the X server
+itself (`x11rb`), on Wayland it runs through XWayland when that is available (see
+[Wayland](#wayland)). The tray icon uses the StatusNotifierItem D-Bus interface; GNOME shows it
+only with an AppIndicator extension.

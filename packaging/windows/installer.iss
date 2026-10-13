@@ -16,7 +16,7 @@
 ;
 ; Optional defines:
 ;   /DAppVersionNumeric=0.1.0   purely numeric version for the file properties
-;                               (default: AppVersion; required for versions like 0.2.0rc1)
+;                               (default: AppVersion; required for versions like 0.3.0-rc.1)
 ;   /DBundleDir=<dir>           the assembled bundle folder (default: dist\EyeTracker)
 ;   /DOutputDir=<dir>           where the setup program is written (default: dist)
 ;
@@ -173,7 +173,7 @@ Type: dirifempty; Name: "{app}"
 
 [Code]
 const
-  { platformdirs locations (appauthor "bugraskl", appname "eye-tracker"). }
+  { The per-user data folder (author "bugraskl", app "eye-tracker"; see src/paths.rs). }
   UserDataParent = '{localappdata}\bugraskl';
   UserDataDir = '{localappdata}\bugraskl\eye-tracker';
   { "eye-tracker ctl" exit code when no instance is running. }
