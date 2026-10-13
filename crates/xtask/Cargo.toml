@@ -8,7 +8,19 @@ publish = false
 
 [dependencies]
 clap.workspace = true
+eye-tracker = { path = "../eye-tracker" }
+hex.workspace = true
+icns.workspace = true
+ico.workspace = true
+image.workspace = true
+regex.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 ureq.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true
