@@ -47,7 +47,7 @@ pub const THIRD_PARTY: [(&str, &str, &str, &str); 14] = [
         "MediaPipe Face Landmarker model",
         "Apache-2.0",
         "Face landmarks, head pose and iris position: the face mesh model and its \
-         face geometry, run by OpenCV (the MediaPipe runtime is not included)",
+         face geometry, run by tract (the MediaPipe runtime is not included)",
         "https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker",
     ),
     (

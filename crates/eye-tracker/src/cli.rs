@@ -141,7 +141,7 @@ struct GlobalOptions {
         help_heading = "global options"
     )]
     log_level: Option<String>,
-    /// camera index (0, 1, ...) or a video/image file; overrides the settings
+    /// camera index (0, 1, ...) or an image file or a folder of frames; overrides the settings
     #[arg(
         long,
         global = true,
@@ -206,8 +206,8 @@ they only take effect when the app starts."
     #[command(
         about = "measure CPU use and latency",
         long_about = "Run the capture and analysis loop without the UI, first as fast as possible \
-and then at the idle rate the app uses while you sit still. Use --camera to benchmark a video or \
-image file instead of the configured camera."
+and then at the idle rate the app uses while you sit still. Use --camera to benchmark an image file or a \
+folder of frames instead of the configured camera."
     )]
     Bench {
         /// duration of each of the two runs (default: 5)
