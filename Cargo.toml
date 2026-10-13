@@ -28,9 +28,7 @@ crossbeam-channel = "0.5.17"
 parking_lot = "0.12.5"
 # Numerics, images, inference
 nalgebra = "0.35.0"
-ndarray = "0.17.2"
 image = "0.25.10"
-fast_image_resize = "6.1.0"
 imageproc = "0.27.0"
 tract-tflite = "0.23.8"
 tract-onnx = "0.23.8"
@@ -52,7 +50,6 @@ egui-file-dialog = "0.15.0"
 # URLs and folders open through egui's own `Context::open_url`, the gate's one allowed opener.
 display-info = "0.5.9"
 tiny-skia = "0.11.4"
-global-hotkey = "0.8.0"
 # IPC, processes, hashing
 interprocess = "2.4.5"
 sysinfo = "0.39.6"
