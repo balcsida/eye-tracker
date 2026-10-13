@@ -5,6 +5,9 @@ mod check_privacy;
 mod fetch_models;
 mod gen_config_docs;
 mod make_icons;
+#[cfg(test)]
+mod packaging_tests;
+mod smoke_test_bundle;
 
 use std::path::PathBuf;
 
@@ -35,7 +38,7 @@ enum Command {
     /// Build the website.
     BuildSite(build_site::Args),
     /// Start a built bundle and check that it runs.
-    SmokeTestBundle,
+    SmokeTestBundle(smoke_test_bundle::Args),
 }
 
 fn main() {
@@ -45,11 +48,7 @@ fn main() {
         Command::MakeIcons(args) => make_icons::main(&args),
         Command::BuildSite(args) => build_site::main(&args),
         Command::CheckPrivacy(args) => check_privacy::main(&args),
-        Command::SmokeTestBundle => {
-            // TODO(port): scripts/smoke_test_bundle.py
-            eprintln!("not ported yet");
-            1
-        }
+        Command::SmokeTestBundle(args) => smoke_test_bundle::main(&args),
     };
     std::process::exit(code);
 }
