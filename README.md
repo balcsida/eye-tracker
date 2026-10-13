@@ -121,8 +121,11 @@ flowchart LR
     F -- switch --> G[Move cursor +<br/>focus last window]
 ```
 
-- **Vision.** MediaPipe's face-landmark network runs through OpenCV's DNN module. The MediaPipe
-  runtime is not used, because it contains a telemetry uploader ([why](docs/privacy.md#why-not-the-mediapipe-runtime)).
+- **Vision.** MediaPipe's face-landmark network and the YuNet face detector run on
+  [tract](https://github.com/sonos/tract), a pure-Rust inference engine, inside the program; there
+  is no OpenCV. The MediaPipe runtime is not used, because it contains a telemetry uploader
+  ([why](docs/privacy.md#why-not-the-mediapipe-runtime)). The windows are drawn with
+  [egui](https://github.com/emilk/egui), not Qt.
 - **Personal model.** Calibration fits a small regression from your head angles and iris positions
   to screen positions. Its accuracy is graded honestly with leave-one-point-out cross-validation.
 - **Decision.** A switch needs a steady look past the bezel for 0.3 s, and is held back while you type,
@@ -136,11 +139,11 @@ Deeper dive: [architecture](docs/architecture.md).
 
 | Promise | Verified by |
 |---|---|
-| No network access by default: no telemetry, no accounts. The one thing that can use the network is the update check, which you turn on yourself (Windows, off by default): one HTTPS request a day to `api.github.com` that carries no identifier. | A source scan fails CI on networking code, with that single reviewed exception. Every release build, and every pull request that changes the packaging or the dependencies, is scanned too: each bundled native library and Python module. |
-| Camera frames are analysed in memory and never saved. | The source scan fails CI on OpenCV's image and video writers (`imwrite`, `imencode`, `VideoWriter`); anything else is left to code review. |
+| No network access by default: no telemetry, no accounts. The one thing that can use the network is the update check, which you turn on yourself (Windows, off by default): one HTTPS request a day to `api.github.com` that carries no identifier. | The Rust privacy gate, `cargo xtask check-privacy`, fails CI on networking code in the app and in its dependency tree, with these reviewed allowances: WinHTTP for the opt-in update check, egui's link opener for links you click, and the D-Bus session socket of the Linux tray. Every release build is scanned too: each bundled native binary. |
+| Camera frames are analysed in memory and never saved. | The gate fails CI on image encoders and writers (the `image` crate's `save`, `write_to` and `*Encoder` types); anything else is left to code review. |
 | Only numbers are stored: head angles, iris ratios, screen points. | `calibration.json` is plain JSON. |
 | Privacy mode, pause and a locked screen release the camera. | The webcam light goes out. |
-| Typing is detected from the OS idle timer, never by reading keys. | [`engine/input_state.py`](src/eye_tracker/engine/input_state.py) |
+| Typing is detected from the OS idle timer, never by reading keys. | [`engine/input_state.rs`](crates/eye-tracker/src/engine/input_state.rs) |
 
 Details: [privacy](docs/privacy.md).
 
@@ -177,7 +180,7 @@ The examples use `eye-tracker`. What to type depends on how you installed Eye Tr
 | macOS | `"/Applications/Eye Tracker.app/Contents/MacOS/eye-tracker-cli"` |
 | Linux AppImage | the AppImage file itself, e.g. `./EyeTracker-<version>-linux-x86_64.AppImage` |
 | Linux tarball | `./eye-tracker/eye-tracker` |
-| From source | `uv run eye-tracker` |
+| From source | `cargo run --release --` (or `target/release/eye-tracker`) |
 
 `eye-tracker doctor` shows the command of your copy (*command_line*), and so do the app's own hints.
 
@@ -236,19 +239,17 @@ Glance Switch inspired this project. This comparison uses the features listed on
 
 ## Run from source
 
-Requires [uv](https://docs.astral.sh/uv/) (it fetches the right Python itself).
+Requires a current stable [Rust toolchain](https://rustup.rs/).
 
 ```bash
 git clone https://github.com/bugraskl/eye-tracker.git
 cd eye-tracker
-uv sync
-uv run eye-tracker
+cargo run --release
 ```
 
-This is also the way to run Eye Tracker on an Intel Mac (macOS 14 or newer). On Linux, running
-from source needs glibc 2.34 or newer (for the Qt wheels) and your distribution's `libxcb-cursor0`
-(Debian/Ubuntu) or `xcb-util-cursor` (Fedora, Arch) package. Building installers yourself:
-[building](docs/building.md).
+This is also the way to run Eye Tracker on an Intel Mac (macOS 14 or newer). On Linux, building
+needs `clang`, `libclang-dev`, `libxcb1-dev`, `libxcb-randr0-dev` and `pkg-config`
+(Debian/Ubuntu names). Building installers yourself: [building](docs/building.md).
 
 ## FAQ
 
@@ -317,10 +318,12 @@ helps other multi-monitor users find it.
 
 - [MediaPipe Face Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) model by Google (Apache-2.0)
 - [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) face detector (MIT)
-- [OpenCV](https://opencv.org/) (Apache-2.0) and [Qt for Python](https://doc.qt.io/qtforpython-6/) (LGPLv3)
+- [tract](https://github.com/sonos/tract) (MIT or Apache-2.0), which runs both models
+- [egui and eframe](https://github.com/emilk/egui) (MIT or Apache-2.0), the user interface
+- [nokhwa](https://github.com/l1npengtul/nokhwa) (Apache-2.0), camera capture
 
 The model files, their licence texts and checksums are listed in
-[NOTICE.md](src/eye_tracker/vision/models/NOTICE.md).
+[NOTICE.md](crates/eye-tracker/models/NOTICE.md).
 
 ## License
 

@@ -4,8 +4,9 @@
 * @bugraskl
 
 # Privacy-critical areas: changes here need an explicit look from the maintainer.
-/scripts/check_privacy.py @bugraskl
-/src/eye_tracker/vision/ @bugraskl
-/src/eye_tracker/ipc.py @bugraskl
+/crates/xtask/src/check_privacy.rs @bugraskl
+/crates/eye-tracker/src/vision/ @bugraskl
+/crates/eye-tracker/src/update/ @bugraskl
+/crates/eye-tracker/src/ipc.rs @bugraskl
 /.github/workflows/ @bugraskl
 /packaging/ @bugraskl

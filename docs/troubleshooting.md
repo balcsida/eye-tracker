@@ -24,6 +24,9 @@ Another app may be holding it, or the operating system blocks access:
 - macOS: *System Settings → Privacy & Security → Camera* must list Eye Tracker as allowed.
 - Linux: your user needs access to `/dev/video*` (usually the `video` group).
 
+To test without a webcam, set **Device** (or `--camera`) to a photo or to a folder of image frames;
+video files are not supported.
+
 With several cameras, pick the right one under **Settings → Camera & performance → Device**
 (**Detect cameras** lists them). `eye-tracker doctor --probe-cameras` tests cameras 0 to 3 (their
 lights may flash).
@@ -211,5 +214,7 @@ Eye Tracker starts, so quit the running app first (tray menu → **Quit Eye Trac
 eye-tracker run --trace trace.jsonl
 ```
 
-Logs are in the folder that `eye-tracker doctor` prints under *paths*. For more detail, set
+Logs are in the folder that `eye-tracker doctor` prints under *paths*. The current file is
+`eye-tracker.log`; at 1 MB it is renamed with a timestamp (`eye-tracker_r2026-10-13_12-00-00.log`) and a new one
+starts, and the three newest rotated files are kept. For more detail, set
 **Settings → General → Log level** to *Debug* before you reproduce the problem.

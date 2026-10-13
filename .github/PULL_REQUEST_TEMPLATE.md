@@ -20,10 +20,10 @@ Which OS / desktop, how many monitors, which camera? For UI changes add screensh
 
 ## Checklist
 
-- [ ] Tests added or updated, and `uv run pytest` passes
-- [ ] `uv run ruff check .` and `uv run ruff format --check .` are clean
-- [ ] `uv run mypy` is clean
-- [ ] `uv run python scripts/check_privacy.py` passes: no network code and no frames written to disk
+- [ ] Tests added or updated, and `cargo test` passes
+- [ ] `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` are clean
+- [ ] `cargo xtask check-privacy` passes: no network code and no frames written to disk
+- [ ] `cargo xtask gen-config-docs` run if a setting changed
 - [ ] `CHANGELOG.md` updated under `## [Unreleased]` (for user-visible changes)
 - [ ] Documentation updated if behaviour, settings or commands changed
 - [ ] Works (or degrades gracefully) on Windows, macOS and Linux, or the limitation is documented

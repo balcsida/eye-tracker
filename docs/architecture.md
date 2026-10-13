@@ -1,6 +1,6 @@
 # Architecture
 
-Eye Tracker is a small Qt tray application with a vision thread. This document describes how a
+Eye Tracker is a small Rust tray application (egui and eframe) with a vision thread. This document describes how a
 camera frame becomes a cursor jump, what runs on which thread, and why the code is split the way it
 is.
 
@@ -15,7 +15,7 @@ flowchart LR
     end
     BK --> OBS[Observation<br/>features, face count, blink, blind]
     COPY --> OBS
-    subgraph M["Qt main thread"]
+    subgraph M["UI thread (eframe)"]
         OBS --> CTRL[Controller]
         CTRL --> PRES[Presence monitor]
         CTRL --> GUARD[Shoulder guard]
@@ -29,10 +29,12 @@ flowchart LR
     LOCK --> OS
 ```
 
-1. **Capture.** `vision/camera.py` opens the camera with the platform's native API (DirectShow,
-   AVFoundation, V4L2) at 640×480, asks for MJPG and a small driver buffer, and only drops stale
-   frames when the loop has been idle longer than a frame period.
-2. **Motion gate.** `vision/motion.py` compares a 32×24 grey thumbnail of the frame, plus a
+1. **Capture.** `vision/camera.rs` opens the camera through nokhwa, which uses the platform's native
+   API (Media Foundation, AVFoundation, V4L2), at 640×480. It asks for MJPG where that helps (not on
+   AVFoundation, which has none) and only drops stale frames when the loop has been idle longer than
+   a frame period. Besides cameras, the same module plays still images and folders of image frames,
+   for tests and demos; there is no video-file input.
+2. **Motion gate.** `vision/motion.rs` compares a 32×24 grey thumbnail of the frame, plus a
    thumbnail of the eye band, with the last analysed frame. If nothing moved, the previous result is
    reused and no neural network runs. A blink is never reused, and neither is a result the face
    backend has not settled on (see below): the picture stops changing as soon as the user sits
@@ -41,11 +43,12 @@ flowchart LR
    room) so they are treated as "cannot tell" rather than "nobody here".
 3. **Face backend.** `vision/backends/`:
    - **facemesh** (default) runs MediaPipe's face-landmark network (478 points including both
-     irises) with OpenCV's DNN module and fits the canonical face mesh with `solvePnP` for head
+     irises) with [tract](https://github.com/sonos/tract) (a pure-Rust inference engine) and fits the
+     canonical face mesh with a Levenberg-Marquardt PnP solver (`vision/backends/pnp.rs`) for head
      pose. It tracks the face region from frame to frame. After a posture shift it runs the network
      again on the region the landmarks ask for (two to four inferences for that one frame), so the
      features are right on the first frame; until the region has caught up, the result counts as
-     not settled. YuNet finds the face when tracking is lost, also rotated by ±45° for a strongly
+     not settled. YuNet (also run by tract; `vision/backends/yunet.rs`) finds the face when tracking is lost, also rotated by ±45° for a strongly
      tilted head. Every 1.5 s (and 0.5 s after a face was found) one small YuNet detection checks
      whether a clearly larger or more central face is in view, so a poster or a colleague picked up
      while the user was away does not keep control once the user is back. Features: yaw, pitch,
@@ -55,7 +58,7 @@ flowchart LR
 
    The MediaPipe *runtime* is intentionally not used. Its native library contains a usage-logging
    uploader, and this app never touches the network (see [privacy.md](privacy.md)).
-4. **Gaze model.** `gaze/model.py` maps the feature vector to a point on the virtual desktop with
+4. **Gaze model.** `gaze/model.rs` maps the feature vector to a point on the virtual desktop with
    ridge regression on standardised features. Nonlinear terms (squares, pairwise products, cubes)
    are built only from the gaze-direction features (yaw, pitch, iris), never from head position or
    roll, so leaning back or sitting lower does not bend the fit. Degree and regularisation are
@@ -67,9 +70,9 @@ flowchart LR
    where the estimate places each monitor, and gaze near that place counts as on screen too. Models
    saved by older versions use a per-feature range test instead until they are recalibrated or
    refined by adaptive learning.
-5. **Smoothing.** A One Euro filter (`gaze/filters.py`) removes webcam jitter while keeping
+5. **Smoothing.** A One Euro filter (`gaze/filters.rs`) removes webcam jitter while keeping
    deliberate head turns fast.
-6. **Switch decision.** `engine/decision.py` turns the smoothed gaze into at most one switch; see
+6. **Switch decision.** `engine/decision.rs` turns the smoothed gaze into at most one switch; see
    [The switching rules](#the-switching-rules).
 7. **Action.** The controller remembers the cursor position and focused window of the monitor being
    left, warps the cursor to the target monitor and gives keyboard focus to the last window used
@@ -116,7 +119,7 @@ counting as absence. A blind frame (lens covered, dark room) freezes them only w
 began while the user was demonstrably there (face seen or input within 3 s), and then for at most
 5 minutes without input; blindness that begins after the user left counts as absence.
 
-Every detected face counts as the user. The shoulder guard (`engine/guard.py`) never decides
+Every detected face counts as the user. The shoulder guard (`engine/guard.rs`) never decides
 presence: it compares face boxes and cannot recognise faces, and a wrong "that is not the user"
 would lock out someone sitting at their own desk. It only decides whether its reaction (curtain,
 notification, lock) is still needed. It triggers after a second face has been in view for 2 s,
@@ -137,7 +140,7 @@ with two or more monitors and switching turned on.
 
 ## Frame rate and CPU
 
-The camera is never read faster than needed. `engine/scheduler.py` picks the analysis rate from the
+The camera is never read faster than needed. `engine/scheduler.rs` picks the analysis rate from the
 situation:
 
 | Situation | Eco | Balanced | Responsive |
@@ -156,25 +159,27 @@ frames per second. `eye-tracker bench` measures the cost on your machine.
 
 | Thread | Owns | Talks to the rest via |
 |---|---|---|
-| Qt main thread | Controller, UI, gaze model, decisions, platform calls | Qt signals |
-| Vision worker | Camera, motion gate, face backend | Queued Qt signals (observations, stats, preview frames) |
-| Hotkey thread (Windows, X11) | `RegisterHotKey` message loop / `XGrabKey` event loop | Queued signal to the main thread |
+| UI thread (eframe) | Controller, UI, gaze model, decisions, platform calls | Drains the workers' channels in `update()` |
+| Vision worker | Camera, motion gate, face backend | `crossbeam-channel` events (observations, stats, preview frames) |
+| Hotkey thread (Windows, X11) | `RegisterHotKey` message loop / `XGrabKey` event loop | Channel to the UI thread |
+| Pane worker | Pane providers (the terminals' own command-line tools) | Request channel in, event channel out |
 
-The face backend is created, used and closed on the worker thread. Worker setters (`set_interval`,
-`set_active`, …) are thread-safe and wake the loop.
+The face backend is created, used and closed on the worker thread. The worker's setters
+(`set_interval`, `set_active`, …) are thread-safe and wake the loop. Workers wake the UI thread with
+`ctx.request_repaint()`; there is no async runtime in the app.
 
 ## Calibration
 
-`gaze/calibration.py` shows nine dots per monitor in a serpentine order. For each dot it waits
+`gaze/calibration.rs` shows nine dots per monitor in a serpentine order. For each dot it waits
 0.8 s for the eyes and head to settle, then collects samples for 1 s, skipping blinks and
 unusable frames. A dot with too few samples is retried once and then skipped. The result is graded
 by leave-one-point-out cross-validation: each dot is predicted by a model that never saw it.
 
-The calibration window (`ui/calibration_window.py`) pauses the dots while no face has been seen for
+The calibration window (`ui/calibration_window.rs`) pauses the dots while no face has been seen for
 1.5 s. Walk-away detection and the shoulder guard are suspended while it is open, so it closes
 itself after 60 s without a face, or after 2 minutes without a key press while it waits for one.
 
-Calibrations are stored per monitor layout, backend and camera (`gaze/store.py`), so moving a
+Calibrations are stored per monitor layout, backend and camera (`gaze/store.rs`), so moving a
 laptop between two docks switches between profiles instead of forcing a recalibration. Only numbers
 are stored: feature vectors and target points, never images.
 
@@ -187,29 +192,69 @@ used. On Wayland nothing is learned, because the pointer position cannot be read
 
 ## Coordinates
 
-All screen coordinates are Qt global coordinates. On Windows and Linux/X11 the app disables Qt's
-high-DPI scaling and is per-monitor DPI aware, so Qt coordinates equal native pixels. On macOS Qt
-coordinates are Cocoa points, which is what Quartz and the Accessibility API use. No conversion
-happens anywhere.
+All screen coordinates are native pixels on Windows and Linux/X11, and Cocoa points on macOS, which
+is what Quartz and the Accessibility API use. The app is per-monitor DPI aware on Windows and
+tells winit not to scale on X11 (`WINIT_X11_SCALE_FACTOR=1`). No conversion happens anywhere.
 
 ## Code map
 
-```
-src/eye_tracker/
-  types.py            shared value types (Rect, Monitor, Observation, TrackingState)
-  config.py           typed settings with validation and forgiving loading
-  vision/             camera, motion gate, worker thread, face backends and models
+```text
+crates/eye-tracker/src/
+  types.rs            shared value types (Rect, Monitor, Observation, TrackingState)
+  config.rs           typed settings with validation and forgiving loading
+  paths.rs            config, data and log directories
+  logging_setup.rs    the rotating log file
+  trace.rs            the optional numeric trace
+  vision/             camera, motion gate, worker thread, face backends (and the models' loaders)
   gaze/               gaze model, filters, calibration, calibration store, implicit learning
   engine/             decision, reading rule, presence, guard, scheduler, input tracking, controller
   panes/              split-pane focus (experimental): providers, worker thread, decision
   platform/           Windows / macOS / Linux integration, autostart, global hotkeys
-  ui/                 tray, settings, calibration window, overlays, wizard
-  app.py, cli.py      application wiring and command line
-  ipc.py              single instance and `eye-tracker ctl`
-  diagnostics.py      `doctor` and `bench`
+  ui/                 tray, settings, calibration window, overlays, wizard, update window
+  update/             the opt-in update check and installer; winhttp.rs is the only network file
+  app.rs, cli.rs      application wiring and command line
+  ipc.rs              single instance and `eye-tracker ctl`
+  diagnostics.rs      `doctor` and `bench`
+  testing/            shared test helpers (compiled for tests only)
+  bin/                the console binary `eye-tracker` and the windowed `eye-tracker-gui`
+crates/eye-tracker/models/   the model files (embedded with include_bytes!), NOTICE.md, licenses/
+crates/xtask/                `cargo xtask`: developer tools (privacy gate, models, icons, docs, site)
 ```
 
-`gaze/` and `engine/` (except `controller.py`) import neither Qt nor OpenCV and take the current
-time as an argument, so the logic that decides when to switch or lock is tested deterministically.
-The same holds for `panes/decider.py`; the pane providers run the terminals' own command-line tools
-on the pane worker's thread ([split-pane focus](panes.md)).
+`gaze/` and `engine/` (except `controller.rs`) touch neither the camera, the UI nor the operating
+system, and take the current time as an argument, so the logic that decides when to switch or lock
+is tested deterministically. The same holds for `panes/decider.rs`; the pane providers run the
+terminals' own command-line tools on the pane worker's thread ([split-pane focus](panes.md)).
+
+## Conventions
+
+- **One module, one file.** Every area has the module layout above, and the module's public
+  functions, types and constants keep their names between the code, the docs and the tests.
+- **Tests sit next to the module.** The tests of `src/foo.rs` live in `src/foo_tests.rs`, declared
+  at the bottom of `foo.rs` with `#[cfg(test)] #[path = "foo_tests.rs"] mod tests;`, so they can use
+  private items. A header comment in the tests file lists what is deliberately not tested and why
+  (a test that needs a real camera or a face photo returns early without
+  `EYE_TRACKER_TEST_FACE`). Shared fixtures are in `src/testing/`.
+- **Events and `tick(now)`, not callbacks and timers.** A component collects what it wants to
+  announce in a `Vec<Event>` (an enum per component) that the method returns or that
+  `drain_events()` hands over; the owner (controller, app) dispatches. Nothing stores callbacks.
+  A component with a deadline keeps its own due time and has a `tick(now: f64)` method that the app
+  loop calls at a fixed cadence. Workers are `std::thread`s with a request channel in and an event
+  channel out, joined on `stop()` or on drop.
+- **The UI seam.** A UI module never holds the controller. It exposes
+  `show(ctx: &egui::Context, inputs: &XInputs) -> Vec<XAction>`: one `XInputs` struct of the plain
+  values it displays and one `XAction` enum of what the user asked for. `app.rs` feeds the inputs
+  from controller state and maps the actions to controller calls.
+- **Overlays are immediate viewports.** Calibration, the gaze dot, the privacy curtain and the
+  countdown toast are `ctx.show_viewport_immediate` windows built from a monitor's rectangle:
+  borderless, always on top, positioned at the monitor's origin and sized to it. The dot and the toast
+  are transparent and click-through. Dialogs (settings, wizard, about, update, preview) are viewports
+  with decorations. Monitors come from `platform::monitors()`, primary first, and the controller
+  polls them once a second to notice a monitor being plugged in or out.
+- **Degrade, never crash.** Platform calls return `bool` or `Option`; a failure is logged and the
+  app carries on. `unwrap()` and `expect()` appear only in tests and on invariants the code itself
+  guarantees.
+- **Settings and data files are compatible.** Names, locations, JSON keys, versions and migrations
+  stay as they were, so an upgrade keeps settings and calibrations.
+- **Privacy is enforced mechanically.** No networking code outside `update/winhttp.rs`, and no frame
+  is ever written to disk: `cargo xtask check-privacy` ([privacy](privacy.md#the-privacy-gate)).

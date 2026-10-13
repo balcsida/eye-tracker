@@ -46,15 +46,16 @@ use the issue tracker for those.
 
 ## Design safeguards
 
-- **No network code, checked twice.** `scripts/check_privacy.py` fails CI if any networking API
-  (sockets, HTTP clients, Qt network classes, asyncio connections, ctypes loads of network
-  libraries) is used under `src/`, or if frame-writing APIs (`imwrite`, `VideoWriter`, `imencode`)
-  appear. `check_privacy.py --bundle` then scans every native library and every bundled Python
-  module of every release build (and of pull requests that change the packaging or the
-  dependencies) for telemetry endpoints, networking packages and plugins, and networking imports,
-  against a reviewed allow-list with a reason per entry. Telemetry markers are never allow-listed.
+- **No network code, checked three times.** `cargo xtask check-privacy` fails CI if any networking
+  API (sockets, HTTP clients, native networking libraries, network command-line tools) is used
+  under `crates/eye-tracker/src`, if a dependency pulls in a networking crate that has not been
+  reviewed, or if frame-writing APIs (image encoders) appear. `check-privacy --bundle` then scans
+  every native binary of every release build (and of pull requests that change the packaging or
+  the dependencies) for telemetry endpoints, networking libraries and imported networking
+  functions, against a reviewed allow-list with a reason per entry. Telemetry markers are never
+  allow-listed.
 - **No MediaPipe runtime.** Its native library contains a usage-logging uploader, so the face model
-  runs through OpenCV instead (see [docs/privacy.md](docs/privacy.md)).
+  runs through tract instead (see [docs/privacy.md](docs/privacy.md)).
 - **Frames stay in memory.** Only numeric features (head angles, iris ratios) are stored in the
   calibration file; never images.
 - **Least privilege.** The app runs as the current user, needs no administrator rights, and uses

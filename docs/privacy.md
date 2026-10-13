@@ -7,8 +7,8 @@ checkable by anyone.
 
 | Promise | How it is kept | How you can check |
 |---|---|---|
-| **Nothing leaves your computer.** | Apart from the update check you can turn on (next section), there is no networking code in the application. The only socket it listens on is a local, per-user IPC channel (a named pipe on Windows, a Unix socket elsewhere) used by `eye-tracker ctl`, and it accepts only your own user account. On Linux the app also talks to your desktop over the local D-Bus and X11 sockets. None of them reaches the network. | `scripts/check_privacy.py` fails CI on any networking import or call, with one reviewed exception: `update/winhttp.py`, which it reports on every run. Every release build, and every pull request that changes the packaging or the dependencies, is scanned as well: every bundled native library and every bundled Python module. Run a firewall or `strace -f -e trace=connect` yourself. |
-| **Frames are never stored.** | Camera frames live in memory for one analysis step. No image or video is written anywhere. | The privacy check fails CI on `imwrite`, `imencode` and `VideoWriter` under `src/`; other image APIs (such as Qt's `QImage.save`) are left to code review. |
+| **Nothing leaves your computer.** | Apart from the update check you can turn on (next section), there is no networking code in the application. The only socket it listens on is a local, per-user IPC channel (a named pipe on Windows, a Unix socket elsewhere) used by `eye-tracker ctl`, and it accepts only your own user account. On Linux the app also talks to your desktop over the local D-Bus and X11 sockets. None of them reaches the network. | `cargo xtask check-privacy` fails CI on any networking import or call in the app's sources, and on any dependency that pulls in a networking crate, with a short list of [reviewed allowances](#the-privacy-gate); the one allowance in the app's own code is `update/winhttp.rs`, which it reports on every run. Every release build, and every pull request that changes the packaging or the dependencies, is scanned as well: every bundled native binary. Run a firewall or `strace -f -e trace=connect` yourself. |
+| **Frames are never stored.** | Camera frames live in memory for one analysis step. No image or video is written anywhere. | The privacy gate fails CI on the `image` crate's encoders and writers (`save_buffer`, `save_with_format`, `write_to`, `write_with_encoder`, the `*Encoder` types), on a `save` call in a file that uses the `image` crate, and on a file write of something named like a frame; other ways of writing (a frame passed to a general-purpose serialiser, say) are left to code review. |
 | **Only numbers are kept.** | The calibration file holds head angles, iris ratios and the screen points they map to. | Open `calibration.json`; it is plain JSON. |
 | **The camera is really off when it says so.** | Privacy mode, pause and the locked screen *release* the camera device (the webcam light goes out); they do not just ignore frames. Privacy mode stays on after Eye Tracker or the computer restarts, also after an update, until you turn it off, so the camera never comes back on by itself (**Keep privacy mode on after a restart** in Settings → Presence & privacy). | Watch the webcam LED. |
 | **No telemetry and no accounts. Update checks only if you turn them on.** | There is nothing to phone home to. The update check is off by default and is the only thing that can use the network ([below](#the-update-check-opt-in)). | See the first row. |
@@ -16,16 +16,18 @@ checkable by anyone.
 ## Why not the MediaPipe runtime
 
 The face-landmark network comes from Google's MediaPipe Face Landmarker (Apache-2.0). The
-MediaPipe *Python package* was used during development, until a review found that its native library
+MediaPipe *Python package* was used during early development, until a review found that its native library
 (`libmediapipe`) contains a usage-logging client that opens a connection to `play.googleapis.com`
 whenever a landmarker is closed, with no way to switch it off.
 
-Eye Tracker therefore runs the same network with OpenCV's DNN module, which it already needs for
-camera capture. On a reference photo the landmark output matches MediaPipe's to within 0.2 % of the
-image size (`tests/test_facemesh.py` compares them when that photo is supplied), and the MediaPipe
-runtime is not installed, imported or shipped.
-[`src/eye_tracker/vision/models/NOTICE.md`](../src/eye_tracker/vision/models/NOTICE.md) lists the
-exact model files, their licences and checksums; the licence texts ship next to the models.
+Eye Tracker therefore runs the same network with [tract](https://github.com/sonos/tract), a
+pure-Rust inference engine that is part of the program (the YuNet face detector runs on it as well).
+On a reference photo the landmark output matches MediaPipe's to within 0.2 % of the image size
+(the face-mesh tests compare them when a photo is supplied through `EYE_TRACKER_TEST_FACE`), and the
+MediaPipe runtime is not compiled, linked or shipped.
+[`crates/eye-tracker/models/NOTICE.md`](../crates/eye-tracker/models/NOTICE.md) lists the exact
+model files, their licences and checksums; the licence texts ship next to the models, and the model
+files are embedded in the program, so nothing is downloaded at run time.
 
 ## The update check (opt in)
 
@@ -61,10 +63,10 @@ checksums, the announced size for the installer), and the installer's address mu
 one GitHub derives from the repository, the release tag and the file name.
 
 **How it connects.** Through Windows' own WinHTTP, from one module
-([`update/winhttp.py`](../src/eye_tracker/update/winhttp.py)), which is the only exception in
-`scripts/check_privacy.py` and is printed in its output on every run. Windows checks the
-certificates against its root store and the proxy settings are the system's. No OpenSSL or Python
-`ssl` is added to the app.
+([`update/winhttp.rs`](../crates/eye-tracker/src/update/winhttp.rs)), which is the only file the
+source check lets use a native networking API (`cargo xtask check-privacy` prints that allowance on
+every run). Windows checks the certificates against its root store and the proxy settings are the
+system's. No OpenSSL or Rust TLS library is added to the app.
 
 **What it cannot promise.** The checksum list sits on the same release as the installer, so it
 guards against a damaged or truncated download, not against someone who can replace both files on
@@ -78,26 +80,50 @@ you were told about, so that it asks at most once a day and tells you once.
 **See it yourself.** Leave the setting off and run a firewall; or turn it on and watch that
 `EyeTracker.exe` only ever contacts the hosts above.
 
-## Networking code inside the libraries it ships
+## The privacy gate
 
-Apart from that update check, Eye Tracker's own code contains no networking code, but some
-libraries it ships do, because they can do more than Eye Tracker asks of them:
+`cargo xtask check-privacy` ([`crates/xtask/src/check_privacy.rs`](../crates/xtask/src/check_privacy.rs))
+runs in CI on every change and in the release build. It has three parts.
 
-- Qt's network module provides the local IPC channel; its TCP, TLS and HTTP parts are never used, and
-  Qt's network plugins are not shipped.
-- OpenCV reads video files with FFmpeg, which can also open network streams. Eye Tracker opens only
-  local files: it refuses URLs and protocol prefixes for every video source, and FFmpeg lets a local
-  file (a playlist, for example) refer only to local data. On macOS, OpenCV's package contains FFmpeg
-  as Homebrew builds it, with libraries for SRT, RIST, SFTP, ZeroMQ and TLS streams and an OCR
-  library that can download images; none of them is ever used. Libraries that nothing in the app
-  uses at all, such as the X11 client library and OpenSSL's TLS library, are left out of the macOS
-  app.
-- Python's socket module is there because the standard library and psutil use it, and pyobjc can
-  convert network addresses for macOS APIs that Eye Tracker does not call.
+**The sources.** It parses (never compiles) every Rust file under `crates/eye-tracker/src` and fails
+on networking crates and modules (`std::net`, `socket2`, `reqwest`, `ureq`, TLS libraries, URL
+openers such as `webbrowser`...), on names that open a connection or resolve a host (`TcpStream`,
+`UdpSocket`, `to_socket_addrs`...), on Windows, macOS and libc networking APIs, on network
+command-line tools started as subprocesses (`curl`, `wget`, `ssh`...), and on anything that could
+put a camera frame on disk (see the second promise above). Tests and test helpers are not part of
+the app and are skipped. There are no allow-list comments: a legitimate exception means changing the
+rule in the gate, where it is reviewed. The only exception in the app's own code is WinHTTP in
+[`update/winhttp.rs`](../crates/eye-tracker/src/update/winhttp.rs), for the update check above.
 
-The privacy gate lists every such file, with what it links and why that is acceptable, in the log
-of every release build, and fails the build when a library gains networking code that has not been
-reviewed.
+**The dependencies.** The sources cannot show what third-party code does, so it also reads the
+dependency tree of the app (`cargo metadata`, every platform) and fails on any crate that depends on
+a networking crate unless an entry of its dependency allow-list names that exact pair, with the
+reason. The entries today:
+
+- `tokio` (with `mio` and `socket2`): the async runtime of the Linux tray (`ksni`, and `zbus` under
+  it). Its only connection is the D-Bus session bus, a local Unix socket named by
+  `$DBUS_SESSION_BUS_ADDRESS`.
+- `egui-winit` (with `webbrowser`): egui's link opener. When you click a link, the address goes to
+  your default browser; the app itself connects to nothing.
+
+**The built bundle.** `cargo xtask check-privacy --bundle DIR` reads every native binary of a
+release bundle (PE, ELF and Mach-O, found by their magic bytes) and fails on telemetry markers
+(usage-logging endpoints such as `play.googleapis.com`, Clearcut, Firebase logging, Sentry,
+Segment...), on a networking library it links and on imported host-name resolution or remote
+connection functions, unless the file is on the bundle allow-list. Every allowed finding is printed
+in the log of every release build. The entries today:
+
+- `eye-tracker*.exe` links WinHTTP: the update check.
+- `eye-tracker*.exe` links Winsock: Rust's standard library links `ws2_32` for `std::net` and calls
+  `WSACleanup` at exit; the app's own code opens no socket, which the source check enforces.
+- `eye-tracker*` imports `getaddrinfo` and friends: they come with `std::net`'s resolver, reached
+  through `x11rb` (a TCP connection only if `$DISPLAY` names another host) and `zbus` (the D-Bus
+  session bus); the app's own code resolves no host.
+
+Plain `socket` and `connect` are not flagged, because D-Bus, X11 and the app's own IPC use them for
+local connections. There is no FFmpeg, no OpenCV and no Qt in the program: the camera is read
+through the operating system's own camera API, image files and frame folders are the only
+file inputs, and Eye Tracker refuses URLs and protocol prefixes for every frame source.
 
 ## What is stored, and where
 
@@ -106,7 +132,7 @@ reviewed.
 | `settings.json` | Your preferences | Windows `%LOCALAPPDATA%\bugraskl\eye-tracker\`, macOS `~/Library/Application Support/eye-tracker/`, Linux `~/.config/eye-tracker/` |
 | `calibration.json` | Calibration profiles: numeric feature vectors, target points, the fitted model, and learned samples from mouse use | Windows `%LOCALAPPDATA%\bugraskl\eye-tracker\`, macOS `~/Library/Application Support/eye-tracker/`, Linux `~/.local/share/eye-tracker/` |
 | `state.json` | Whether privacy mode is on, so that it stays on after a restart | Next to `calibration.json` |
-| `eye-tracker.log` | Events such as "switched to monitor 2" or "camera opened". No window titles, no key contents, no images. Rotated at 1 MB × 3. | The platform log directory; `eye-tracker doctor` prints the exact paths |
+| `eye-tracker.log` | Events such as "switched to monitor 2" or "camera opened". No window titles, no key contents, no images. Rotated at 1 MB, keeping three older files with a timestamp in the name (`eye-tracker.log` is always the current one). | The platform log directory; `eye-tracker doctor` prints the exact paths |
 
 The Windows portable ZIP uses the same folders. Started with `--config-dir DIR`, Eye Tracker keeps
 everything in `DIR` instead (the calibration in `DIR/data`, the logs in `DIR/logs`).

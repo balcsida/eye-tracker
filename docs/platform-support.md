@@ -134,7 +134,8 @@ in **Settings → Hotkeys** and in `eye-tracker doctor`.
 ### Wayland
 
 Wayland deliberately forbids apps from moving the pointer, reading its position, reading other
-windows or grabbing keys. Eye Tracker runs through XWayland where it can. On Wayland:
+windows or grabbing keys. Eye Tracker prefers XWayland where it is available: it hides `WAYLAND_DISPLAY` from its own process so
+that the windowing library picks X11 and calibration windows can be positioned on a monitor. On Wayland:
 
 - The cursor moves exactly through the compositor's own IPC on **sway** (`swaymsg`) and
   **Hyprland** (`hyprctl`). Elsewhere it needs **ydotool 1.x** with `ydotoold` running. Because
@@ -186,8 +187,7 @@ these apps run** (for example `zoom`, `teams-for-linux`, `skypeforlinux`, `obs`)
 
 ### Packages
 
-The AppImage bundles its libraries, including `libxcb-cursor`. If Qt still cannot find a platform
-plugin, install your distribution's `libxcb-cursor0` (Debian/Ubuntu) or `xcb-util-cursor` (Fedora,
-Arch) package. The packages leave out Qt's GTK platform theme (Qt then uses its own GNOME and KDE
-styles or the desktop portal) and the VNC, WebGL and framebuffer platform plugins, so
-`QT_QPA_PLATFORM=vnc`, `eglfs` or `linuxfb` does not work with them.
+The AppImage bundles its libraries. The program is a single static Rust binary that needs no Qt,
+no Python and no OpenCV; on X11 it talks to the X server itself (`x11rb`), on Wayland it runs through
+XWayland when that is available (see [Wayland](#wayland)). The tray icon uses the StatusNotifierItem
+D-Bus interface; GNOME shows it only with an AppIndicator extension.

@@ -121,9 +121,11 @@ flowchart LR
     F -- geçiş --> G[İmleci taşı +<br/>son pencereye odaklan]
 ```
 
-- **Görüntü.** MediaPipe'ın yüz noktası ağı OpenCV'nin DNN modülüyle çalıştırılır. MediaPipe
+- **Görüntü.** MediaPipe'ın yüz noktası ağı ve YuNet yüz algılayıcı, saf Rust bir çıkarım motoru olan
+  [tract](https://github.com/sonos/tract) ile program içinde çalışır; OpenCV yoktur. MediaPipe
   çalışma zamanı kullanılmaz, çünkü içinde bir telemetri gönderici bulunur
-  ([neden](docs/privacy.md#why-not-the-mediapipe-runtime)).
+  ([neden](docs/privacy.md#why-not-the-mediapipe-runtime)). Pencereler Qt ile değil,
+  [egui](https://github.com/emilk/egui) ile çizilir.
 - **Kişisel model.** Kalibrasyon, baş açılarınızdan ve iris konumlarınızdan ekran konumlarına küçük
   bir regresyon modeli öğrenir. Doğruluğu, her noktayı onu hiç görmemiş bir modelle tahmin eden
   çapraz doğrulamayla dürüstçe notlanır.
@@ -138,11 +140,11 @@ Ayrıntılar: [mimari](docs/architecture.md) (İngilizce).
 
 | Söz | Nasıl doğrulanıyor |
 |---|---|
-| Varsayılan olarak ağ erişimi yok: telemetri ve hesap yok. Ağı kullanabilen tek şey, kendinizin açtığınız güncelleme kontrolüdür (Windows, varsayılan olarak kapalı): günde bir kez `api.github.com`'a, hiçbir kimlik bilgisi taşımayan bir HTTPS isteği. | Kaynak kod taraması, tek bir gözden geçirilmiş istisna dışında ağ kodu bulunursa CI'ı başarısız kılar. Her sürüm derlemesi ve paketlemeyi ya da bağımlılıkları değiştiren her çekme isteği de taranır: paketlenen her yerel kütüphane ve Python modülü. |
-| Kamera kareleri bellekte analiz edilir, asla kaydedilmez. | Kaynak kod taraması, OpenCV'nin görüntü ve video yazıcılarında (`imwrite`, `imencode`, `VideoWriter`) CI'ı başarısız kılar; geri kalanı kod incelemesine bırakılır. |
+| Varsayılan olarak ağ erişimi yok: telemetri ve hesap yok. Ağı kullanabilen tek şey, kendinizin açtığınız güncelleme kontrolüdür (Windows, varsayılan olarak kapalı): günde bir kez `api.github.com`'a, hiçbir kimlik bilgisi taşımayan bir HTTPS isteği. | Rust gizlilik denetimi `cargo xtask check-privacy`, uygulamadaki ve bağımlılık ağacındaki ağ kodunda CI'ı başarısız kılar; gözden geçirilmiş izinler şunlardır: açık güncelleme kontrolü için WinHTTP, tıkladığınız bağlantılar için egui'nin bağlantı açıcısı ve Linux tepsisinin D-Bus oturum soketi. Her sürüm derlemesi de taranır: paketlenen her yerel ikili dosya. |
+| Kamera kareleri bellekte analiz edilir, asla kaydedilmez. | Denetim, görüntü kodlayıcılarında ve yazıcılarında (`image` kütüphanesinin `save`, `write_to` ve `*Encoder` türleri) CI'ı başarısız kılar; geri kalanı kod incelemesine bırakılır. |
 | Sadece sayılar saklanır: baş açıları, iris oranları, ekran noktaları. | `calibration.json` düz bir JSON dosyasıdır. |
 | Gizlilik modu, duraklatma ve kilitli ekran kamerayı bırakır. | Webcam ışığı söner. |
-| Yazma, tuşlar okunarak değil, işletim sisteminin boşta kalma sayacıyla algılanır. | [`engine/input_state.py`](src/eye_tracker/engine/input_state.py) |
+| Yazma, tuşlar okunarak değil, işletim sisteminin boşta kalma sayacıyla algılanır. | [`engine/input_state.rs`](crates/eye-tracker/src/engine/input_state.rs) |
 
 Ayrıntılar: [gizlilik](docs/privacy.md) (İngilizce).
 
@@ -179,7 +181,7 @@ kareleri atlar. En düşük CPU için **Eco** 0,5 ile 8 (15), en hızlı tepki i
 | macOS | `"/Applications/Eye Tracker.app/Contents/MacOS/eye-tracker-cli"` |
 | Linux AppImage | AppImage dosyasının kendisi, örneğin `./EyeTracker-<version>-linux-x86_64.AppImage` |
 | Linux tarball | `./eye-tracker/eye-tracker` |
-| Kaynaktan | `uv run eye-tracker` |
+| Kaynaktan | `cargo run --release --` (veya `target/release/eye-tracker`) |
 
 `eye-tracker doctor` kopyanızın komutunu gösterir (*command_line*); uygulamanın kendi ipuçları da
 onu kullanır.
@@ -239,19 +241,18 @@ Bu proje Glance Switch'ten ilham aldı. Karşılaştırma, [glanceswitch.com](ht
 
 ## Kaynaktan çalıştırma
 
-[uv](https://docs.astral.sh/uv/) gerekir (doğru Python sürümünü kendisi indirir).
+Güncel kararlı bir [Rust araç takımı](https://rustup.rs/) gerekir.
 
 ```bash
 git clone https://github.com/bugraskl/eye-tracker.git
 cd eye-tracker
-uv sync
-uv run eye-tracker
+cargo run --release
 ```
 
-Intel Mac'lerde (macOS 14 veya daha yenisi) de bu yol kullanılır. Linux'ta kaynaktan çalıştırmak
-için glibc 2.34 veya daha yenisi (Qt wheel'ları için) ve dağıtımınızın `libxcb-cursor0`
-(Debian/Ubuntu) ya da `xcb-util-cursor` (Fedora, Arch) paketi gerekir. Kurulum paketlerini
-kendiniz derlemek için: [derleme](docs/building.md) (İngilizce).
+Intel Mac'lerde (macOS 14 veya daha yenisi) de bu yol kullanılır. Linux'ta derlemek için
+`clang`, `libclang-dev`, `libxcb1-dev`, `libxcb-randr0-dev` ve `pkg-config` paketleri gerekir
+(Debian/Ubuntu adlarıyla). Kurulum paketlerini kendiniz derlemek için:
+[derleme](docs/building.md) (İngilizce).
 
 ## SSS
 
@@ -322,10 +323,12 @@ diğer çok monitörlü kullanıcıların onu bulmasına yardımcı olur.
 
 - Google'ın [MediaPipe Face Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) modeli (Apache-2.0)
 - [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) yüz algılayıcı (MIT)
-- [OpenCV](https://opencv.org/) (Apache-2.0) ve [Qt for Python](https://doc.qt.io/qtforpython-6/) (LGPLv3)
+- [tract](https://github.com/sonos/tract) (MIT veya Apache-2.0), iki modeli çalıştırır
+- [egui ve eframe](https://github.com/emilk/egui) (MIT veya Apache-2.0), kullanıcı arayüzü
+- [nokhwa](https://github.com/l1npengtul/nokhwa) (Apache-2.0), kamera yakalama
 
 Model dosyaları, lisans metinleri ve sağlama toplamları
-[NOTICE.md](src/eye_tracker/vision/models/NOTICE.md) dosyasında listelenir.
+[NOTICE.md](crates/eye-tracker/models/NOTICE.md) dosyasında listelenir.
 
 ## Lisans
 

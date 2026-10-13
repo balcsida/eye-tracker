@@ -259,7 +259,7 @@
           </div>
           <div class="notice">
             <h3>MediaPipe'ın çalışma zamanını, eve telefon ettiği için çıkardık</h3>
-            <p>Yüz noktası modeli Google'ın MediaPipe projesinden gelir (Apache-2.0), ancak çalışma zamanı Google sunucularına bağlanan bir kullanım kaydedici içerir. Eye Tracker aynı modeli bunun yerine OpenCV ile, birebir aynı sonuçlarla çalıştırır ve o çalışma zamanını dağıtmaz.</p>
+            <p>Yüz noktası modeli Google'ın MediaPipe projesinden gelir (Apache-2.0), ancak çalışma zamanı Google sunucularına bağlanan bir kullanım kaydedici içerir. Eye Tracker aynı modeli bunun yerine programın içindeki saf Rust çıkarım motoru tract ile, birebir aynı sonuçlarla çalıştırır ve o çalışma zamanını dağıtmaz.</p>
             <span class="verified"><svg aria-hidden="true"><use href="#i-check"/></svg>Her sürüm ağ koduna karşı taranır</span>
           </div>
         </div>
@@ -361,11 +361,10 @@
           <a href="https://github.com/bugraskl/eye-tracker/blob/main/docs/calibration.md">Kalibrasyon rehberi</a>
         </div>
         <div class="source">
-          <p><strong>Kaynaktan mı çalıştırmak istersiniz?</strong>Git ve <a href="https://docs.astral.sh/uv/">uv</a> gerekir. Intel Mac'ler de bu yolu kullanır.</p>
+          <p><strong>Kaynaktan mı çalıştırmak istersiniz?</strong>Git ve <a href="https://rustup.rs/">Rust araç takımı</a> gerekir. Intel Mac'ler de bu yolu kullanır.</p>
           <pre><code>git clone https://github.com/bugraskl/eye-tracker.git
 cd eye-tracker
-uv sync
-uv run eye-tracker</code></pre>
+cargo run --release</code></pre>
         </div>
       </div>
     </section>

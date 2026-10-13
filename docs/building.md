@@ -2,87 +2,65 @@
 
 Releases are built on GitHub's runners whenever a `v*` tag is pushed, by the steps in
 [`.github/workflows/build.yml`](../.github/workflows/build.yml) (see
-[Continuous integration](#continuous-integration)). You can run the same steps locally. Every build
-must be made on the operating system it targets: PyInstaller does not cross-compile.
+[Continuous integration](#continuous-integration)). You can run the same steps locally. Build each
+package on the operating system it targets; the one cross-check that works from anywhere is
+[the MinGW check](#cross-checking-windows-from-another-system).
 
 ## Prerequisites
 
-- [uv](https://docs.astral.sh/uv/)
+- A current stable [Rust toolchain](https://rustup.rs/)
 - **Windows:** [Inno Setup 6](https://jrsoftware.org/isinfo.php) for the installer (optional)
 - **macOS:** Xcode command line tools (`xcode-select --install`)
-- **Linux:** `libxcb-cursor0` (Debian/Ubuntu) or `xcb-util-cursor` (Fedora, Arch), which is bundled
-  into the AppImage
+- **Linux** (Debian/Ubuntu package names): `clang`, `libclang-dev`, `libxcb1-dev`,
+  `libxcb-randr0-dev` and `pkg-config`
 
 ## Common steps
 
 ```bash
-uv sync --locked
-uv run python scripts/fetch_models.py --check     # verify the committed models and licence texts
-uv run python scripts/make_icons.py               # .ico / .icns / .png from the app's own icon code
-uv run pyinstaller packaging/pyinstaller/eye-tracker.spec --noconfirm --clean
+cargo build --release                     # target/release/eye-tracker and eye-tracker-gui
+cargo xtask fetch-models --check          # verify the committed models and licence texts
+cargo xtask make-icons                    # .ico / .icns / .png from the app's own icon code
 ```
 
-The output lands in `dist/`:
+The result is two binaries and nothing else to ship: `eye-tracker` (the command line) and
+`eye-tracker-gui` (the tray app; on Windows it has no console window). The face models are embedded
+in the program, and there is no Qt, OpenCV or Python runtime to bundle. The packaging scripts below
+turn the binaries into the packages.
 
-| Platform | Output |
-|---|---|
-| Windows | `dist/EyeTracker/EyeTracker.exe` (tray app, no console) and `eye-tracker-cli.exe` (command line) |
-| macOS | `dist/Eye Tracker.app` (menu-bar app) with `Contents/MacOS/eye-tracker-cli` |
-| Linux | `dist/eye-tracker/eye-tracker` (one executable for the app and the command line) |
-
-The build fails if the output contains a symbolic link to a file that is not bundled: on macOS such
-a link breaks signing. The spec drops the links to every library it leaves out (see below).
-
-Then run the privacy gate on the bundle. It reads every native library, and with PyInstaller's own
-archive readers every Python module inside the executables and inside ZIP files such as
-`base_library.zip`. It fails on telemetry markers, networking packages, Qt's network plugins (TLS,
-network information and access, VNC, WebGL, the TUIO listener) and networking code that is not on
-its reviewed allow-list. The success line says how many native binaries and Python modules it
-checked:
+Then run the privacy gate on the result. It reads every native binary and fails on telemetry
+markers, on networking libraries and on imported networking functions that are not on its reviewed
+allow-list ([how it works](privacy.md#the-privacy-gate)). The success line says how many native
+binaries it checked:
 
 ```bash
-uv run python scripts/check_privacy.py --bundle dist/EyeTracker        # Windows
-uv run python scripts/check_privacy.py --bundle "dist/Eye Tracker.app" # macOS
-uv run python scripts/check_privacy.py --bundle dist/eye-tracker       # Linux
+cargo xtask check-privacy --bundle target/release           # the plain build
+cargo xtask check-privacy --bundle "dist/Eye Tracker.app"   # a macOS app
 ```
 
-The allow-list (`BUNDLE_ALLOWLIST` in `scripts/check_privacy.py`) names each file that may contain
-networking code, exactly what it may link or import, and why; the gate prints those as notices. A
-library that the app does not need is left out by the spec instead of being allowed: Qt's network
-plugins and what only they link, OpenSSL libraries that nothing imports, and on macOS every library
-that no bundled binary binds a symbol to. OpenCV's macOS wheel ships FFmpeg as Homebrew builds it,
-which links libraries it never uses (libX11, and libssl through libsrt); the spec makes those links
-weak in the copies it bundles and leaves the libraries out, together with the symbolic links that
-PyInstaller made to them.
+The allow-list (`BUNDLE_ALLOWLIST` in
+[`crates/xtask/src/check_privacy.rs`](../crates/xtask/src/check_privacy.rs)) names each file that may
+contain networking code, exactly what it may link, and why; the gate prints those as notices.
 
-Finally, smoke-test the command-line tool as CI does. The script checks the version, that the build
-is frozen with every face model present and verified, that both backends analyse an image, that
-the bundled FFmpeg decodes an AVI and an MP4 file (written on the spot with the build environment's
-OpenCV), and that camera probing runs (AVFoundation on macOS). It writes only to a temporary folder:
-
-```bash
-uv run python scripts/smoke_test_bundle.py --version 0.2.0 dist/EyeTracker/eye-tracker-cli.exe
-uv run python scripts/smoke_test_bundle.py --version 0.2.0 "dist/Eye Tracker.app/Contents/MacOS/eye-tracker-cli"
-uv run python scripts/smoke_test_bundle.py --version 0.2.0 dist/eye-tracker/eye-tracker
-```
+Finally, `cargo xtask smoke-test-bundle` starts a built bundle and checks that it runs; the release
+workflow does this for each package the way users get it.
 
 ## Packages
+
+The scripts live under `packaging/`; their headers describe their arguments.
 
 **Windows installer and portable ZIP**
 
 ```powershell
-iscc /DAppVersion=0.2.0 packaging\windows\installer.iss   # -> dist\EyeTracker-0.2.0-windows-x64-setup.exe
-Compress-Archive dist\EyeTracker dist\EyeTracker-0.2.0-windows-x64-portable.zip
+iscc /DAppVersion=0.3.0 packaging\windows\installer.iss
 ```
 
 The installer is per user (no administrator rights), creates a Start menu shortcut, and optionally
-registers start at sign-in. It also installs the command-line tool a second time as
-`eye-tracker.exe` and, with the task *Add the "eye-tracker" command to PATH* (on by default;
-`/MERGETASKS=!addtopath` turns it off in a silent install), adds the installation folder to the
-user's PATH; uninstalling removes that entry. A user PATH that is not stored as a string value
-(some tools write it as `REG_MULTI_SZ`) cannot be read, and is left as it is. Upgrades keep your
-choices, and a silent upgrade (winget, `/SILENT`, `/VERYSILENT`) restarts Eye Tracker in the
-background if it had to close it.
+registers start at sign-in. It also installs the command-line tool and, with the task *Add the
+"eye-tracker" command to PATH* (on by default; `/MERGETASKS=!addtopath` turns it off in a silent
+install), adds the installation folder to the user's PATH; uninstalling removes that entry. A user
+PATH that is not stored as a string value (some tools write it as `REG_MULTI_SZ`) cannot be read,
+and is left as it is. Upgrades keep your choices, and a silent upgrade (winget, `/SILENT`,
+`/VERYSILENT`) restarts Eye Tracker in the background if it had to close it.
 
 Start at sign-in is never turned back on by an upgrade: it stays as you left it in the app or in
 Task Manager (which can disable it without removing it), whatever the first installation chose. An
@@ -90,54 +68,68 @@ explicit choice wins, also in a silent upgrade: `/MERGETASKS=startup` turns it o
 Manager's "disabled" flag), `/MERGETASKS=!startup` turns it off, and `/TASKS=...` turns it on only
 when it lists `startup`.
 
-**macOS disk image**
+**macOS app and disk image**
 
 ```bash
-bash packaging/macos/make_dmg.sh --app "dist/Eye Tracker.app" --version 0.2.0 \
-  --out dist/EyeTracker-0.2.0-macos-arm64.dmg
+bash packaging/macos/make_app.sh
+bash packaging/macos/make_dmg.sh
 ```
 
-The script refuses an app that contains a symbolic link to a missing file, and names the links,
-before it signs anything; rebuild the app with the spec. The app is signed ad hoc unless you
-provide a certificate. With a stable identity (a Developer ID,
-or a self-signed certificate as described at the top of `make_dmg.sh`), the Camera and Accessibility
-permissions survive updates. In CI, set the repository secrets `MACOS_SIGNING_CERT_P12`,
-`MACOS_SIGNING_CERT_PASSWORD` and optionally `MACOS_SIGNING_IDENTITY`.
+`make_app.sh` assembles `Eye Tracker.app` from the release build; `make_dmg.sh` signs it and builds
+the disk image. The app is signed ad hoc unless you provide a certificate. With a stable identity (a
+Developer ID, or a self-signed certificate as described at the top of `make_dmg.sh`), the Camera and
+Accessibility permissions survive updates. In CI, set the repository secrets
+`MACOS_SIGNING_CERT_P12`, `MACOS_SIGNING_CERT_PASSWORD` and optionally `MACOS_SIGNING_IDENTITY`.
 
 **Linux AppImage and tarball**
 
 ```bash
-bash packaging/linux/build_appimage.sh --version 0.2.0
+bash packaging/linux/build_appimage.sh
 ```
 
 `appimagetool` and the AppImage runtime are downloaded at pinned versions and verified against their
 SHA-256. Where FUSE is unavailable (containers, CI), export `APPIMAGE_EXTRACT_AND_RUN=1`.
 
+## Cross-checking Windows from another system
+
+A Windows build cannot be tested away from Windows, but it can be type-checked, which catches most
+`cfg(windows)` mistakes:
+
+```bash
+rustup target add x86_64-pc-windows-gnu
+cargo check --target x86_64-pc-windows-gnu --all-targets
+```
+
+This needs MinGW-w64 (`brew install mingw-w64`, or `gcc-mingw-w64-x86-64` on Debian/Ubuntu). The
+Linux build can be checked from a Mac the way
+[CONTRIBUTING.md](../CONTRIBUTING.md#testing-linux-from-a-mac) describes.
+
 ## Face models
 
-The models live in [`src/eye_tracker/vision/models/`](../src/eye_tracker/vision/models/) together with
+The models live in [`crates/eye-tracker/models/`](../crates/eye-tracker/models/) together with
 `NOTICE.md` (licences, upstream URLs and checksums) and, in its `licenses/` folder, the full licence
 texts that must ship with them (Apache-2.0 and the YuNet MIT notice). To re-download and re-extract
 the models from their upstream sources:
 
 ```bash
-uv run python scripts/fetch_models.py
+cargo xtask fetch-models
 ```
 
-The licence texts are never downloaded: `fetch_models.py --check` fails when one is missing or
-altered (restore it from git), and the PyInstaller spec refuses to build without them.
+The licence texts are never downloaded: `cargo xtask fetch-models --check` fails when one is
+missing or altered (restore it from git). The program embeds the model files with `include_bytes!`,
+so a build fails when one is missing.
 
 ## Continuous integration
 
-- [`ci.yml`](../.github/workflows/ci.yml) runs Ruff, mypy (also as on Windows and macOS), the
-  source privacy check, the model check and the tests on Linux, Windows and macOS.
+- [`ci.yml`](../.github/workflows/ci.yml) runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, the privacy
+  gate, the model check and the configuration reference check on Linux, Windows and macOS.
 - [`build.yml`](../.github/workflows/build.yml) is the one definition of how the packages are
   built and tested. It is a reusable workflow, never run on its own: the Bundle check and the
   release both call it, so a pull request checks exactly what a release ships. It reads the version
   and writes the release notes, then builds each platform on its own runner (`windows-latest`,
   `macos-14`, and `ubuntu-22.04` for the oldest supported glibc):
-  - **every platform:** PyInstaller, the bundle privacy gate, the packages, and
-    `scripts/smoke_test_bundle.py` on each package the way users get it;
+  - **every platform:** `cargo build --release`, the bundle privacy gate, the packages, and
+    `cargo xtask smoke-test-bundle` on each package the way users get it;
   - **Windows:** the bundle (the portable ZIP's contents), then the installer, which a disposable
     runner installs, upgrades and uninstalls: start at sign-in after silent upgrades, with and
     without `/MERGETASKS=startup` or `!startup` and with Task Manager's "disabled" flag, the PATH
@@ -147,11 +139,9 @@ altered (restore it from git), and the PyInstaller spec refuses to build without
     image; the app is then checked inside the mounted image: no symbolic link without a target,
     `codesign --verify --deep --strict`, the Info.plist, and the smoke test of its
     `eye-tracker-cli`;
-  - **Linux:** that `libxcb-cursor` is bundled and GTK and GIO are not, then the AppImage (smoke
-    test) and the tarball (its links and its launcher).
+  - **Linux:** the AppImage (smoke test) and the tarball (its links and its launcher).
 - [`bundle.yml`](../.github/workflows/bundle.yml) runs `build.yml` whenever a pull request or a push
-  to `main` changes the app (`src/`), `packaging/`, the privacy gate, the model, icon or smoke-test
-  scripts, `pyproject.toml`, `uv.lock` or the release workflows. It passes no secret (the macOS app
+  to `main` changes the app (`crates/`), `packaging/`, `Cargo.toml`, `Cargo.lock` or the release workflows. It passes no secret (the macOS app
   is signed ad hoc), keeps no artifact and publishes nothing. Start it by hand on any branch with
   `gh workflow run bundle.yml --ref <branch>`.
 - [`release.yml`](../.github/workflows/release.yml) runs `build.yml` for a `v*` tag, or by hand to
@@ -175,22 +165,21 @@ To build and preview it locally:
 
 ```bash
 gh api repos/bugraskl/eye-tracker/releases/latest > release.json   # optional
-uv run python scripts/build_site.py --release release.json --out _site
-uv run python -m http.server 8000 --directory _site
+cargo xtask build-site --release release.json --out _site
+python3 -m http.server 8000 --directory _site
 ```
 
 ## Releasing
 
-1. Update `__version__` in `src/eye_tracker/__init__.py` and move the **Unreleased** notes in
+1. Update `version` under `[workspace.package]` in the root `Cargo.toml` (`cargo build` then updates
+   `Cargo.lock`) and move the **Unreleased** notes in
    `CHANGELOG.md` under a new `## [x.y.z] - YYYY-MM-DD` heading, leaving `## [Unreleased]` empty.
 2. Commit, then tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
    The installed apps look for `EyeTracker-<version>-windows-x64-setup.exe` and `SHA256SUMS.txt` in
-   the latest release to update themselves ([`update/release.py`](../src/eye_tracker/update/release.py),
-   checked by `tests/test_update_release.py`): keep those two names when you change `release.yml`.
+   the latest release to update themselves ([`update/release.rs`](../crates/eye-tracker/src/update/release.rs),
+   checked by its tests): keep those two names when you change `release.yml`.
 3. The release workflow builds and tests every package as described above and publishes the GitHub
    release with the notes from `CHANGELOG.md`. It fails before building anything when the tag does
-   not match `__version__`, when `CHANGELOG.md` has no section for the version, or when notes are
+   not match the version in `Cargo.toml`, when `CHANGELOG.md` has no section for the version, or when notes are
    still under **Unreleased** (they would be missing from the release notes). A run that is not
-   for a tag only reports the two `CHANGELOG.md` problems. The oldest macOS the DMG runs on follows from the bundled wheels
-   (`MACOS_MINIMUM` in `build.yml`, currently 14.0); the smoke test fails when it changes, so that
-   the README, these docs and the release notes are updated with it.
+   for a tag only reports the two `CHANGELOG.md` problems.
