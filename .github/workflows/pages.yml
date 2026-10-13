@@ -13,7 +13,7 @@ on:
     paths:
       - "site/**"
       - "assets/**"
-      - "scripts/build_site.py"
+      - "crates/xtask/src/build_site.rs"
       - ".github/workflows/pages.yml"
   release:
     types:
@@ -39,13 +39,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
         with:
-          python-version: "3.12"
+          toolchain: stable
 
-      - name: Install Pillow (favicons)
-        run: python -m pip install --disable-pip-version-check "pillow>=10.4"
+      - name: Cache the build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Read the latest release
         env:
@@ -56,7 +56,7 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/releases/latest" > release.json || echo '{}' > release.json
 
       - name: Build
-        run: python scripts/build_site.py --release release.json --out _site
+        run: cargo xtask build-site --release release.json --out _site
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0

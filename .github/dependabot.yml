@@ -1,4 +1,4 @@
-# Keep GitHub Actions and Python dependencies (uv.lock) up to date.
+# Keep GitHub Actions and Cargo dependencies (Cargo.lock) up to date.
 # Workflow actions are pinned to commit SHAs with a "# vX.Y.Z" comment; Dependabot
 # updates both together.
 # https://docs.github.com/code-security/dependabot/working-with-dependabot/dependabot-options-reference
@@ -20,7 +20,7 @@ updates:
         patterns:
           - "*"
 
-  - package-ecosystem: uv
+  - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
@@ -30,22 +30,11 @@ updates:
       prefix: deps
     labels:
       - dependencies
-      - python
+      - rust
     groups:
-      # Linters, type checker, test runner and packaging tools move together.
-      dev-tools:
-        dependency-type: development
-        update-types:
-          - minor
-          - patch
-      # Qt and OpenCV are updated one at a time on purpose: each can change
-      # behaviour, bundle size or supported OS versions (OpenCV also runs the
-      # face models, which the facemesh backend self-tests at load time).
-      runtime-patches:
-        dependency-type: production
-        exclude-patterns:
-          - pyside6*
-          - shiboken6
-          - opencv*
+      # Patch releases move together; minor and major ones come one at a time because
+      # tract, egui/eframe and nokhwa can change inference results, rendering or camera
+      # support (the face models run on tract).
+      patches:
         update-types:
           - patch

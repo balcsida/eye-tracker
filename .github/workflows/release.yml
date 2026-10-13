@@ -1,6 +1,6 @@
 name: Release
 
-# Tag vX.Y.Z (matching __version__ in src/eye_tracker/__init__.py and a
+# Tag vX.Y.Z (matching the version in Cargo.toml and a
 # "## [X.Y.Z] - YYYY-MM-DD" section in CHANGELOG.md) to build all packages and
 # publish a GitHub release. Run it manually to build the packages without
 # publishing (they are kept as workflow artifacts).

@@ -1,26 +1,23 @@
 name: Bundle
 
 # Runs the release build (build.yml: the same jobs and steps that release.yml runs)
-# whenever something that decides what goes into the packages changes: the app's code
-# (which PyInstaller freezes), the spec, the packaging scripts, the gate, the
-# dependencies, the release workflows. That is PyInstaller, the bundle
-# privacy gate, the Windows installer and its install/upgrade/uninstall test, the
-# signed macOS disk image and the Linux AppImage and tarball, each smoke-tested. A
-# problem that would fail a release, such as a new networking library pulled in by a
-# dependency update, then shows up on the pull request instead of after a tag is
-# pushed. Nothing is uploaded or published, and no signing certificate is used (the
-# macOS app is signed ad hoc).
+# whenever something that decides what goes into the packages changes: the app's code,
+# the packaging scripts, the privacy gate, the dependencies, the release workflows.
+# That is the release build with cargo, the bundle privacy gate, the Windows installer and
+# its install/upgrade/uninstall test, the signed macOS disk image and the Linux AppImage
+# and tarball, each smoke-tested. A problem that would fail a release, such as a new
+# networking crate pulled in by a dependency update, then shows up on the pull request
+# instead of after a tag is pushed. Nothing is uploaded or published, and no signing
+# certificate is used (the macOS app is signed ad hoc).
 on:
   pull_request:
     paths:
-      - "src/**"
+      - "crates/**"
+      - "vendor/**"
       - "packaging/**"
-      - "scripts/check_privacy.py"
-      - "scripts/fetch_models.py"
-      - "scripts/make_icons.py"
-      - "scripts/smoke_test_bundle.py"
-      - "pyproject.toml"
-      - "uv.lock"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "CHANGELOG.md"
       - ".github/workflows/build.yml"
       - ".github/workflows/bundle.yml"
       - ".github/workflows/release.yml"
@@ -28,14 +25,12 @@ on:
     branches:
       - main
     paths:
-      - "src/**"
+      - "crates/**"
+      - "vendor/**"
       - "packaging/**"
-      - "scripts/check_privacy.py"
-      - "scripts/fetch_models.py"
-      - "scripts/make_icons.py"
-      - "scripts/smoke_test_bundle.py"
-      - "pyproject.toml"
-      - "uv.lock"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "CHANGELOG.md"
       - ".github/workflows/build.yml"
       - ".github/workflows/bundle.yml"
       - ".github/workflows/release.yml"

@@ -9,10 +9,10 @@ name: Build
 #   dependencies, or run manually) runs the same jobs and keeps nothing. It passes no
 #   signing certificate, so its macOS app is signed ad hoc.
 #
-# Every platform builds the bundle with PyInstaller, runs the bundle privacy gate,
-# makes the packages and smoke-tests them the way users get them, with
-# scripts/smoke_test_bundle.py: Windows the bundle (the portable ZIP) and the
-# installed copy, plus install, upgrades and uninstall; macOS the signed app inside
+# Every platform builds the release executables with cargo, assembles the bundle, runs
+# the bundle privacy gate, makes the packages and smoke-tests them the way users get
+# them, with `cargo xtask smoke-test-bundle`: Windows the bundle (the portable ZIP) and
+# the installed copy, plus install, upgrades and uninstall; macOS the signed app inside
 # the disk image; Linux the AppImage and the tarball.
 on:
   workflow_call:
@@ -33,7 +33,7 @@ on:
         required: false
     outputs:
       version:
-        description: The version that was built (__version__).
+        description: The version that was built (version in Cargo.toml).
         value: ${{ jobs.prepare.outputs.version }}
       prerelease:
         description: Whether that version is a pre-release ("true" or "false").
@@ -43,19 +43,12 @@ permissions:
   contents: read
 
 env:
-  FORCE_COLOR: "1"
-  PYTHONUTF8: "1"
-  PYTHON_VERSION: "3.12"
-  # Release builds use the python.org / distro-style CPython from setup-python
-  # (a shared libpython everywhere), never a downloaded one.
-  UV_PYTHON_DOWNLOADS: never
-  UV_NO_PROGRESS: "1"
-  # The icon renderer and the frozen smoke tests run Qt headless.
-  QT_QPA_PLATFORM: offscreen
-  # The oldest macOS the DMG runs on: the newest macosx_* tag of the bundled wheels
-  # (numpy's Accelerate build is macosx_14_0), which the spec writes into
-  # LSMinimumSystemVersion. The smoke test fails when that changes, so the release
-  # notes, README and docs/platform-support.md are updated with it.
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  # The oldest macOS the DMG runs on. It is the deployment target of the macOS build
+  # (MACOSX_DEPLOYMENT_TARGET) and goes into LSMinimumSystemVersion (make_app.sh); the
+  # build checks both, so that the release notes, README and docs/platform-support.md
+  # are updated with it.
   MACOS_MINIMUM: "14.0"
 
 jobs:
@@ -76,13 +69,13 @@ jobs:
       - name: Read the version
         id: version
         run: |
-          version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/eye_tracker/__init__.py)"
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
           if [[ -z "$version" ]]; then
-            echo "::error file=src/eye_tracker/__init__.py::cannot read __version__"
+            echo "::error file=Cargo.toml::cannot read the version"
             exit 1
           fi
           if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$version" ]]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match __version__ \"$version\" (expected v$version)"
+            echo "::error::tag $GITHUB_REF_NAME does not match the version in Cargo.toml \"$version\" (expected v$version)"
             exit 1
           fi
           # Windows file versions and CFBundleVersion must be purely numeric.
@@ -104,109 +97,7 @@ jobs:
           # Whether build-macos signs with a stable certificate (see make_dmg.sh).
           MACOS_STABLE_SIGNATURE: ${{ secrets.MACOS_SIGNING_CERT_P12 != '' }}
         run: |
-          python3 - <<'PY'
-          import os
-          import re
-          import sys
-          import textwrap
-          from pathlib import Path
-
-          version = os.environ["VERSION"]
-          is_tag = os.environ.get("GITHUB_REF_TYPE") == "tag"
-          stable_signature = os.environ.get("MACOS_STABLE_SIGNATURE") == "true"
-          docs = "https://github.com/bugraskl/eye-tracker/blob/main/docs"
-          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
-
-          def section(name):
-              """Keep a Changelog: the section starts at "## [name]" and ends at the next
-              "## " heading or at the link reference definitions ("[X.Y.Z]: url")."""
-              match = re.search(
-                  rf"^## \[{re.escape(name)}\][^\n]*\n(?P<body>.*?)(?=^## |^\[[^\]\n]+\]:|\Z)",
-                  text,
-                  re.MULTILINE | re.DOTALL,
-              )
-              return match.group("body").strip() if match else ""
-
-          # A tag ships every change made before it: notes still under [Unreleased]
-          # would be missing from the release notes (and announced again with the next
-          # version), so they must be moved under the version's heading first.
-          pending = [
-              line
-              for line in section("Unreleased").splitlines()
-              if line.strip() and not line.lstrip().startswith("#")
-          ]
-          if pending:
-              message = (
-                  f"CHANGELOG.md still has notes under '## [Unreleased]': move them under "
-                  f"'## [{version}] - YYYY-MM-DD' before tagging v{version}"
-              )
-              if is_tag:
-                  print(f"::error file=CHANGELOG.md::{message}")
-                  sys.exit(1)
-              print(f"::notice file=CHANGELOG.md::{message}")
-
-          body = section(version)
-          if not body:
-              message = f"CHANGELOG.md has no non-empty '## [{version}] - YYYY-MM-DD' section"
-              if is_tag:
-                  print(f"::error file=CHANGELOG.md::{message}")
-                  sys.exit(1)
-              print(f"::warning file=CHANGELOG.md::{message}")
-              body = "Development build."
-
-          v = version
-          mac_min = os.environ["MACOS_MINIMUM"].removesuffix(".0")
-          footer = f"""
-          ### Downloads
-
-          | Platform | File |
-          |---|---|
-          | Windows 10/11 (x64), installer | `EyeTracker-{v}-windows-x64-setup.exe` |
-          | Windows 10/11 (x64), portable | `EyeTracker-{v}-windows-x64-portable.zip` |
-          | macOS {mac_min} or later (Apple silicon) | `EyeTracker-{v}-macos-arm64.dmg` |
-          | Linux (x86_64), AppImage | `EyeTracker-{v}-linux-x86_64.AppImage` |
-          | Linux (x86_64), tarball | `EyeTracker-{v}-linux-x86_64.tar.gz` |
-
-          Verify a download with `SHA256SUMS.txt`, e.g. `sha256sum -c SHA256SUMS.txt --ignore-missing`,
-          or its build provenance with `gh attestation verify <file> --repo bugraskl/eye-tracker`.
-
-          Command line (`doctor`, `ctl`, `bench`…): `eye-tracker` in a new terminal after
-          installing on Windows (the installer adds it to PATH unless you untick that option;
-          the portable ZIP has `eye-tracker-cli.exe`),
-          `"/Applications/Eye Tracker.app/Contents/MacOS/eye-tracker-cli"` on macOS, and the
-          `.AppImage` file itself (or `eye-tracker/eye-tracker` from the tarball) on Linux.
-
-          The builds are not signed with a paid certificate: Windows SmartScreen may ask you to
-          confirm ("More info" → "Run anyway"), and on macOS the first launch needs
-          "Open Anyway" in System Settings → Privacy & Security.
-          """
-          if stable_signature:
-              macos = """
-              **Updating on macOS:** this build is signed with the project's stable certificate,
-              so the Camera and Accessibility permissions carry over to later updates. Coming
-              from an ad-hoc-signed version, re-grant them once: in System Settings → Privacy &
-              Security → Accessibility, remove Eye Tracker with "−" and add it again.
-              """
-          else:
-              macos = """
-              **Updating on macOS:** this build is signed ad hoc, so macOS treats every version
-              as a new app. It asks for camera access again, and the Accessibility switch for
-              Eye Tracker still looks on but no longer applies: if keyboard focus stops following
-              your gaze, open System Settings → Privacy & Security → Accessibility, remove
-              Eye Tracker with "−" and add it again.
-              """
-          links = f"""
-          Help: [troubleshooting]({docs}/troubleshooting.md) ·
-          [platform support]({docs}/platform-support.md) · [privacy]({docs}/privacy.md)
-          """
-          notes = (
-              body
-              + "\n\n"
-              + "\n\n".join(textwrap.dedent(part).strip() for part in (footer, macos, links))
-              + "\n"
-          )
-          Path("release-notes.md").write_text(notes, encoding="utf-8")
-          PY
+          bash packaging/release_notes.sh
           cat release-notes.md
 
       - name: Upload the release notes
@@ -222,7 +113,7 @@ jobs:
     name: Windows x64
     needs: prepare
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       VERSION_NUMERIC: ${{ needs.prepare.outputs.numeric }}
@@ -235,40 +126,45 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python
-        id: python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          toolchain: stable
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --locked --python "${{ steps.python.outputs.python-path }}"
+      - name: Cache the build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Verify the face models
-        run: uv run --no-sync python scripts/fetch_models.py --check
+        run: cargo xtask fetch-models --check
+
+      - name: Build
+        run: cargo build --release
 
       - name: Render the icons
-        run: uv run --no-sync python scripts/make_icons.py
+        run: cargo xtask make-icons
 
-      - name: Build with PyInstaller
-        run: uv run --no-sync pyinstaller packaging/pyinstaller/eye-tracker.spec --noconfirm --clean
+      # EyeTracker.exe is the windowed app, eye-tracker-cli.exe the console tool (the
+      # installer adds a second copy of it as eye-tracker.exe), the way cli_command and
+      # app_command in crates/eye-tracker/src/cli.rs look for them.
+      - name: Assemble the bundle
+        run: |
+          set -euo pipefail
+          bundle=dist/EyeTracker
+          mkdir -p "$bundle"
+          cp target/release/eye-tracker-gui.exe "$bundle/EyeTracker.exe"
+          cp target/release/eye-tracker.exe "$bundle/eye-tracker-cli.exe"
+          cp crates/eye-tracker/models/NOTICE.md LICENSE packaging/windows/eye-tracker.ico "$bundle/"
+          cp -R crates/eye-tracker/models/licenses "$bundle/licenses"
 
       - name: Privacy gate for the bundle (no telemetry, no unexpected networking code)
-        run: uv run --no-sync python scripts/check_privacy.py --bundle dist/EyeTracker
+        run: cargo xtask check-privacy --bundle dist/EyeTracker
 
-      # What the portable ZIP contains: version, models, both backends, video files
-      # read by the bundled FFmpeg, camera probing.
+      # What the portable ZIP contains: version, start, ctl status and ctl quit.
       - name: Smoke-test the bundle
         run: |
           set -euo pipefail
           test -f dist/EyeTracker/EyeTracker.exe
-          uv run --no-sync python scripts/smoke_test_bundle.py --version "$VERSION" \
-            dist/EyeTracker/eye-tracker-cli.exe
+          cargo xtask smoke-test-bundle --version "$VERSION" dist/EyeTracker/eye-tracker-cli.exe
 
       - name: Create the portable ZIP
         run: |
@@ -342,7 +238,7 @@ jobs:
             if ((Get-Autostart $runKey) -notlike "*\EyeTracker.exe*") { throw "start at sign-in must run the windowed EyeTracker.exe" }
             if ((Get-PathCount) -ne 1) { throw "the installer did not add $app to the user PATH" }
             # The installed copy as a whole, through the command on PATH.
-            uv run --no-sync python scripts/smoke_test_bundle.py --version $env:VERSION "$app\eye-tracker.exe"
+            cargo xtask smoke-test-bundle --version $env:VERSION "$app\eye-tracker.exe"
             if ($LASTEXITCODE -ne 0) { throw "the installed copy failed its smoke test" }
 
             # Turned off in the app (the Run value is deleted): a silent upgrade, as
@@ -440,7 +336,7 @@ jobs:
     name: macOS arm64
     needs: prepare
     runs-on: macos-14
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
@@ -449,33 +345,30 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python
-        id: python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          toolchain: stable
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --locked --python "${{ steps.python.outputs.python-path }}"
+      - name: Cache the build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Verify the face models
-        run: uv run --no-sync python scripts/fetch_models.py --check
+        run: cargo xtask fetch-models --check
+
+      - name: Build
+        run: |
+          export MACOSX_DEPLOYMENT_TARGET="$MACOS_MINIMUM"
+          cargo build --release
 
       - name: Render the icons
-        run: uv run --no-sync python scripts/make_icons.py
+        run: cargo xtask make-icons
 
-      # The spec leaves out the libraries that nothing uses (and their links) and fails
-      # if the app still contains a symbolic link that points at nothing.
-      - name: Build with PyInstaller
-        run: uv run --no-sync pyinstaller packaging/pyinstaller/eye-tracker.spec --noconfirm --clean
+      - name: Assemble the app
+        run: bash packaging/macos/make_app.sh --version "$VERSION" --out "dist/Eye Tracker.app"
 
       - name: Privacy gate for the bundle (no telemetry, no unexpected networking code)
-        run: uv run --no-sync python scripts/check_privacy.py --bundle "dist/Eye Tracker.app"
+        run: cargo xtask check-privacy --bundle "dist/Eye Tracker.app"
 
       # Optional: sign with a stable certificate so the Camera and Accessibility
       # permissions survive updates (see packaging/macos/make_dmg.sh). Without the
@@ -565,12 +458,22 @@ jobs:
             echo "::error::LSMinimumSystemVersion is $minimum, but MACOS_MINIMUM (and the README, docs and release notes) say $MACOS_MINIMUM"
             exit 1
           fi
+          # The deployment target the executables were linked for.
+          for executable in "Eye Tracker" eye-tracker-cli; do
+            built="$(otool -l "$app/Contents/MacOS/$executable" | awk '$1 == "minos" { print $2; exit }')"
+            if [[ "$built" != "$MACOS_MINIMUM" ]]; then
+              echo "::error::$executable is built for macOS $built, but MACOS_MINIMUM says $MACOS_MINIMUM"
+              exit 1
+            fi
+          done
           plutil -extract NSCameraUsageDescription raw "$plist" > /dev/null
           test -x "$app/Contents/MacOS/Eye Tracker"
-          # The command-line tool from inside the disk image: version, models, both
-          # backends, video files read by the bundled FFmpeg, AVFoundation camera probing.
+          test -f "$app/Contents/Resources/NOTICE.md"
+          test -d "$app/Contents/Resources/licenses"
+          # The command-line tool from inside the disk image: version, start, ctl status
+          # and ctl quit.
           cli="$app/Contents/MacOS/eye-tracker-cli"
-          uv run --no-sync python scripts/smoke_test_bundle.py --version "$VERSION" "$cli"
+          cargo xtask smoke-test-bundle --version "$VERSION" "$cli"
 
       - name: Upload the package
         if: inputs.upload
@@ -585,10 +488,10 @@ jobs:
   build-linux:
     name: Linux x86_64
     needs: prepare
-    # The oldest supported runner: the bundle works on distributions with the
+    # The oldest supported runner: the executable works on distributions with the
     # same or a newer glibc (2.35).
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       # appimagetool (and the smoke test) run without FUSE.
@@ -600,56 +503,39 @@ jobs:
           persist-credentials: false
 
       - name: Install system libraries
-        # Qt's xcb platform plugin and its helpers; PyInstaller bundles what it finds,
-        # and libxcb-cursor0 in particular is missing on many desktops. libsm6/libice6
-        # (X session management) are named so the bundle does not depend on what the
-        # runner image happens to have.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 libfontconfig1 libdbus-1-3 \
-            libglib2.0-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
-            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 \
-            libxcb-xkb1 libx11-xcb1 libsm6 libice6 desktop-file-utils
+            clang libclang-dev libxcb1-dev libxcb-randr0-dev pkg-config desktop-file-utils
 
-      - name: Set up Python
-        id: python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          toolchain: stable
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --locked --python "${{ steps.python.outputs.python-path }}"
+      - name: Cache the build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Verify the face models
-        run: uv run --no-sync python scripts/fetch_models.py --check
+        run: cargo xtask fetch-models --check
+
+      - name: Build
+        run: cargo build --release
 
       - name: Render the icons
-        run: uv run --no-sync python scripts/make_icons.py
+        run: cargo xtask make-icons
 
-      - name: Build with PyInstaller
-        run: uv run --no-sync pyinstaller packaging/pyinstaller/eye-tracker.spec --noconfirm --clean
-
-      - name: Check that libxcb-cursor was bundled
-        run: find dist/eye-tracker -name 'libxcb-cursor.so.0*' | grep .
-
-      # The spec drops the GTK3 platform theme and everything only it linked (GTK,
-      # Pango, Cairo, GIO): GIO resolves host names and loads modules from the host.
-      - name: Check that no GTK or GIO libraries were bundled
+      # GIO resolves host names and loads modules from the host: the executable must
+      # not link GTK or GIO (the file dialog is egui's own).
+      - name: Check that no GTK or GIO libraries are linked
         run: |
-          if find dist/eye-tracker \( -name 'libgtk-3.so*' -o -name 'libgio-2.0.so*' \
-              -o -name 'libqgtk3.so' \) | grep .; then
-            echo "::error::the bundle contains GTK or GIO libraries"
+          if ldd target/release/eye-tracker | grep -E 'libgtk|libgio'; then
+            echo "::error::the executable links GTK or GIO libraries"
             exit 1
           fi
 
-      - name: Privacy gate for the bundle (no telemetry, no unexpected networking code)
-        run: uv run --no-sync python scripts/check_privacy.py --bundle dist/eye-tracker
+      - name: Privacy gate for the executable (no telemetry, no unexpected networking code)
+        run: cargo xtask check-privacy --bundle target/release/eye-tracker
 
       # appimagetool and the AppImage runtime are pinned (version and SHA-256) in
       # the script; it refuses unverified downloads.
@@ -659,15 +545,15 @@ jobs:
       - name: Smoke-test the AppImage and the tarball
         run: |
           set -euo pipefail
-          # The AppImage: version, models, both backends, video files read by the
-          # bundled FFmpeg, V4L2 camera probing.
-          uv run --no-sync python scripts/smoke_test_bundle.py --version "$VERSION" \
+          # The AppImage: version, start, ctl status and ctl quit.
+          cargo xtask smoke-test-bundle --version "$VERSION" \
             "dist/EyeTracker-$VERSION-linux-x86_64.AppImage"
           tar -xzf "dist/EyeTracker-$VERSION-linux-x86_64.tar.gz" -C "$RUNNER_TEMP"
           "$RUNNER_TEMP/eye-tracker/eye-tracker" --version | tee version.txt
           grep -qF "$VERSION" version.txt
           test -f "$RUNNER_TEMP/eye-tracker/eye-tracker.desktop"
-          find "$RUNNER_TEMP/eye-tracker" -name 'libxcb-cursor.so.0*' | grep .
+          test -f "$RUNNER_TEMP/eye-tracker/NOTICE.md"
+          test -d "$RUNNER_TEMP/eye-tracker/licenses"
           # Every symbolic link in the tarball resolves (with -L, find lists the broken ones).
           broken="$(find -L "$RUNNER_TEMP/eye-tracker" -type l)"
           if [[ -n "$broken" ]]; then
