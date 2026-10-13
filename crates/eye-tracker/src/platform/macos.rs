@@ -134,6 +134,8 @@ trait Quartz: Send + Sync {
     fn warp_cursor(&self, x: f64, y: f64) -> i32;
     /// `CGAssociateMouseAndMouseCursorPosition`: the `CGError`.
     fn associate_mouse_and_cursor(&self, connected: bool) -> i32;
+    /// Height of the main display (`CGDisplayBounds(CGMainDisplayID())`), in points.
+    fn main_display_height(&self) -> Option<f64>;
     /// `CGWindowListCopyWindowInfo`, front to back.
     fn window_list(&self, options: u32, relative_to: u32) -> Option<Vec<CgWindow>>;
 }
@@ -157,6 +159,8 @@ trait AppKit: Send + Sync {
     fn activate(&self, pid: i32, options: u64) -> bool;
     /// `NSApplication.shared.setActivationPolicy`; `false` off the main thread.
     fn set_activation_policy(&self, policy: i64) -> bool;
+    /// `NSEvent.mouseLocation`: Cocoa points, origin at the bottom left of the main display.
+    fn mouse_location(&self) -> Option<(f64, f64)>;
 }
 
 /// The two numbers of an unpacked `AXValue`.
@@ -1067,13 +1071,22 @@ impl PlatformServices for MacPlatform {
     }
 
     fn move_cursor(&self, x: i32, y: i32) -> Option<bool> {
-        // Missing Quartz: let the caller fall back to the toolkit's own cursor call.
+        // Missing Quartz: the pointer cannot be moved.
         let quartz = self.quartz.as_deref()?;
         let err = quartz.warp_cursor(f64::from(x), f64::from(y));
         // A warp suppresses local mouse events for ~0.25 s; re-associating the mouse ends that,
         // so the user can take over immediately.
         quartz.associate_mouse_and_cursor(true);
         Some(err == 0)
+    }
+
+    /// `NSEvent.mouseLocation` in the top-left-origin points the rest of this module uses.
+    fn cursor_position(&self) -> Option<(i32, i32)> {
+        let (x, y) = self.appkit.as_deref()?.mouse_location()?;
+        let height = self.quartz.as_deref()?.main_display_height()?;
+        // Cocoa's y grows upwards from the main display's bottom edge; the pixel row at its
+        // top edge is y = height - 1 in top-left coordinates.
+        Some((x.floor() as i32, (height - y).floor() as i32))
     }
 
     // ---------------------------------------------------------------- windows
@@ -1395,7 +1408,7 @@ mod system {
     use objc2::rc::Retained;
     use objc2::runtime::{AnyClass, Bool, ProtocolObject};
     use objc2_app_kit::{
-        NSApplication, NSApplicationActivationOptions, NSApplicationActivationPolicy,
+        NSApplication, NSApplicationActivationOptions, NSApplicationActivationPolicy, NSEvent,
         NSRunningApplication, NSWorkspace,
     };
     use objc2_foundation::{
@@ -1432,6 +1445,13 @@ mod system {
         height: f64,
     }
 
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    struct CgRect {
+        origin: CgPoint,
+        size: CgSize,
+    }
+
     #[link(name = "CoreGraphics", kind = "framework")]
     unsafe extern "C" {
         fn CGEventSourceSecondsSinceLastEventType(state: i32, event_type: u32) -> f64;
@@ -1439,6 +1459,8 @@ mod system {
         fn CGWarpMouseCursorPosition(position: CgPoint) -> i32;
         fn CGAssociateMouseAndMouseCursorPosition(connected: i32) -> i32;
         fn CGWindowListCopyWindowInfo(option: u32, relative_to_window: u32) -> CFTypeRef;
+        fn CGMainDisplayID() -> u32;
+        fn CGDisplayBounds(display: u32) -> CgRect;
     }
 
     #[link(name = "ApplicationServices", kind = "framework")]
@@ -1611,6 +1633,12 @@ mod system {
             unsafe { CGAssociateMouseAndMouseCursorPosition(i32::from(connected)) }
         }
 
+        fn main_display_height(&self) -> Option<f64> {
+            // SAFETY: no arguments / a plain value argument; both work on any thread.
+            let bounds = unsafe { CGDisplayBounds(CGMainDisplayID()) };
+            (bounds.size.height > 0.0).then_some(bounds.size.height)
+        }
+
         fn window_list(&self, options: u32, relative_to: u32) -> Option<Vec<CgWindow>> {
             // SAFETY: plain value arguments; the copy rule gives us ownership of the result.
             let raw = unsafe { CGWindowListCopyWindowInfo(options, relative_to) };
@@ -1691,6 +1719,11 @@ mod system {
             };
             NSApplication::sharedApplication(mtm)
                 .setActivationPolicy(NSApplicationActivationPolicy(policy as isize))
+        }
+
+        fn mouse_location(&self) -> Option<(f64, f64)> {
+            let point = NSEvent::mouseLocation();
+            Some((point.x, point.y))
         }
     }
 

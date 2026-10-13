@@ -172,6 +172,7 @@ struct FakeQuartz {
     warps: Mutex<Vec<(f64, f64)>>,
     associations: Mutex<Vec<bool>>,
     windows: Mutex<Vec<CgWindow>>,
+    main_height: Mutex<Option<f64>>,
 }
 
 impl FakeQuartz {
@@ -184,6 +185,7 @@ impl FakeQuartz {
             warps: Mutex::new(Vec::new()),
             associations: Mutex::new(Vec::new()),
             windows: Mutex::new(Vec::new()),
+            main_height: Mutex::new(Some(1080.0)),
         })
     }
 
@@ -211,6 +213,10 @@ impl Quartz for FakeQuartz {
     fn associate_mouse_and_cursor(&self, connected: bool) -> i32 {
         self.associations.lock().push(connected);
         0
+    }
+
+    fn main_display_height(&self) -> Option<f64> {
+        *self.main_height.lock()
     }
 
     fn window_list(&self, options: u32, relative_to: u32) -> Option<Vec<CgWindow>> {
@@ -409,6 +415,7 @@ struct FakeAppKit {
     apps: Mutex<HashMap<i32, FakeRunningApp>>,
     frontmost: AtomicI32,
     policies: Mutex<Vec<i64>>,
+    mouse: Mutex<Option<(f64, f64)>>,
 }
 
 impl FakeAppKit {
@@ -417,6 +424,7 @@ impl FakeAppKit {
             apps: Mutex::new(HashMap::new()),
             frontmost: AtomicI32::new(PID),
             policies: Mutex::new(Vec::new()),
+            mouse: Mutex::new(None),
         };
         kit.add(PID);
         Arc::new(kit)
@@ -474,6 +482,10 @@ impl AppKit for FakeAppKit {
     fn set_activation_policy(&self, policy: i64) -> bool {
         self.policies.lock().push(policy);
         true
+    }
+
+    fn mouse_location(&self) -> Option<(f64, f64)> {
+        *self.mouse.lock()
     }
 }
 
@@ -634,7 +646,8 @@ fn test_everything_degrades_without_pyobjc() {
     assert_eq!(plat.seconds_since_input(), None);
     assert_eq!(plat.seconds_since_key_input(), None);
     assert_eq!(plat.is_session_locked(), None);
-    assert_eq!(plat.move_cursor(1, 2), None); // caller falls back to the toolkit's cursor
+    assert_eq!(plat.move_cursor(1, 2), None); // the pointer cannot be moved
+    assert_eq!(plat.cursor_position(), None);
     assert!(plat.foreground_window().is_none());
     assert!(plat.window_at(1, 2).is_none());
     assert!(!plat.activate_window(&reference));
@@ -797,6 +810,22 @@ fn test_move_cursor_warps_and_reassociates() {
     assert_eq!(*quartz.associations.lock(), [true]);
     quartz.warp_error.store(1001, Ordering::SeqCst);
     assert_eq!(e.plat.move_cursor(0, 0), Some(false));
+}
+
+#[test]
+fn test_cursor_position_is_in_top_left_points() {
+    let mut e = env();
+    let quartz = e.quartz();
+    let appkit = e.appkit();
+    *quartz.main_height.lock() = Some(1080.0);
+    // Cocoa: 100 points above the main display's bottom edge, on a monitor to its left.
+    *appkit.mouse.lock() = Some((-500.0, 100.0));
+    assert_eq!(e.plat.cursor_position(), Some((-500, 980)));
+    // Above the main display (a monitor stacked on top): negative y.
+    *appkit.mouse.lock() = Some((10.5, 1380.0));
+    assert_eq!(e.plat.cursor_position(), Some((10, -300)));
+    *quartz.main_height.lock() = None;
+    assert_eq!(e.plat.cursor_position(), None);
 }
 
 // ------------------------------------------------------------------ pure helpers

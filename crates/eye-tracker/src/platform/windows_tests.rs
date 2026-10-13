@@ -1012,6 +1012,14 @@ fn test_move_cursor_single_call_when_on_target() {
 }
 
 #[test]
+fn test_cursor_position_reads_the_pointer() {
+    let api = api(vec![]);
+    api.s().cursor = (-300, 400); // a monitor left of the primary one
+    assert_eq!(make_platform(&api).cursor_position(), Some((-300, 400)));
+    assert_eq!(exploding_platform().cursor_position(), None);
+}
+
+#[test]
 fn test_move_cursor_failure() {
     let api = api(vec![]);
     api.s().cursor_ok = false;

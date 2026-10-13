@@ -949,6 +949,10 @@ impl PlatformServices for WindowsPlatform {
         })
     }
 
+    fn cursor_position(&self) -> Option<(i32, i32)> {
+        best_effort("cursor_position", || self.api()?.cursor_pos())
+    }
+
     // ------------------------------------------------------------------ windows
     fn foreground_window(&self) -> Option<WindowRef> {
         best_effort("foreground_window", || {

@@ -1,6 +1,7 @@
 //! Shared test helpers (ports of tests/conftest.py, gaze_synth.py, face_drawing.py and
 //! panes_fakes.py as they are needed).
 
+pub(crate) mod controller_fakes;
 pub(crate) mod face_drawing;
 pub(crate) mod gaze_synth;
 pub(crate) mod panes_fakes;

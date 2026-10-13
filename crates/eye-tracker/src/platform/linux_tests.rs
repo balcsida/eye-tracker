@@ -1943,12 +1943,22 @@ fn test_idle_ignores_reset_caused_by_our_ydotool_move() {
 
 // ------------------------------------------------------------------ cursor
 #[test]
-fn test_cursor_x11_leaves_it_to_qt() {
-    let fx = fx();
-    fx.x11(None);
+fn test_cursor_x11_warps_through_x11() {
+    // The Python app left X11 to Qt's QCursor.setPos; there is no toolkit fallback now.
+    let (fx, xdisplay) = x11_fx();
     fx.tools.install(&["ydotool"]);
-    assert_eq!(fx.plat.move_cursor(10, 20), None);
+    assert_eq!(fx.plat.move_cursor(10, -20), Some(true));
+    assert_eq!(xdisplay.0.lock().warps, [(10, -20)]);
     assert!(fx.tools.calls().is_empty());
+}
+
+#[test]
+fn test_cursor_position_x11_queries_the_pointer() {
+    let (fx, xdisplay) = x11_fx();
+    xdisplay.0.lock().pointer = (2600, 400);
+    assert_eq!(fx.plat.cursor_position(), Some((2600, 400)));
+    fx.wayland(Some("GNOME"), true); // XWayland only sees X11 clients: never trust it
+    assert_eq!(fx.plat.cursor_position(), None);
 }
 
 const YDOTOOL_1_HELP: &str = "Usage: mousemove [OPTION]... [-x <xpos> -y <ypos>] [-- <xpos> <ypos>]\n  \
@@ -2797,6 +2807,8 @@ struct DisplayState {
     power_level: u16,
     dpms_log: Vec<String>,
     motions: Vec<i16>,
+    pointer: (i32, i32),
+    warps: Vec<(i32, i32)>,
 }
 
 const ROOT: u32 = 1;
@@ -2826,6 +2838,8 @@ impl FakeDisplay {
             power_level: 0,
             dpms_log: Vec::new(),
             motions: Vec::new(),
+            pointer: (0, 0),
+            warps: Vec::new(),
         })))
     }
 
@@ -2975,6 +2989,17 @@ impl XServer for FakeDisplay {
 
     fn fake_relative_motion(&self, dx: i16) -> XResult<()> {
         self.0.lock().motions.push(dx);
+        Ok(())
+    }
+
+    fn query_pointer(&self) -> XResult<(i32, i32)> {
+        Ok(self.0.lock().pointer)
+    }
+
+    fn warp_pointer(&self, x: i32, y: i32) -> XResult<()> {
+        let mut state = self.0.lock();
+        state.warps.push((x, y));
+        state.pointer = (x, y);
         Ok(())
     }
 

@@ -1127,6 +1127,10 @@ pub(crate) trait XServer: Send {
     fn has_extension(&self, name: &str) -> XResult<bool>;
     /// An XTest relative pointer motion.
     fn fake_relative_motion(&self, dx: i16) -> XResult<()>;
+    /// `QueryPointer` on the root window: the pointer in root (= global) coordinates.
+    fn query_pointer(&self) -> XResult<(i32, i32)>;
+    /// `WarpPointer` to root (= global) coordinates.
+    fn warp_pointer(&self, x: i32, y: i32) -> XResult<()>;
     fn sync(&self) -> XResult<()>;
     fn dpms_capable(&self) -> XResult<bool>;
     /// `(power level, enabled)`.
@@ -1252,6 +1256,27 @@ impl XServer for X11Server {
             dx,
             0,
             0,
+        ))
+    }
+
+    fn query_pointer(&self) -> XResult<(i32, i32)> {
+        let pointer = self.conn.query_pointer(self.root)?.reply()?;
+        Ok((i32::from(pointer.root_x), i32::from(pointer.root_y)))
+    }
+
+    fn warp_pointer(&self, x: i32, y: i32) -> XResult<()> {
+        let coordinate =
+            |v: i32| i16::try_from(v).map_err(|_| XError::Request(format!("{v} is off screen")));
+        // src_window NONE: wherever the pointer is; dst_window root: absolute coordinates.
+        checked(self.conn.warp_pointer(
+            x11rb::NONE,
+            self.root,
+            0,
+            0,
+            0,
+            0,
+            coordinate(x)?,
+            coordinate(y)?,
         ))
     }
 
@@ -1515,6 +1540,21 @@ impl EwmhClient {
             for dx in [1, -1] {
                 s.x.fake_relative_motion(dx)?;
             }
+            s.x.sync()?;
+            Ok(true)
+        })
+    }
+
+    /// Where the pointer is, in global coordinates; `None` when X is unreachable.
+    fn pointer(&self) -> Option<(i32, i32)> {
+        self.call(None, |s| Ok(Some(s.x.query_pointer()?)))
+    }
+
+    /// Move the pointer, and wait until the server did (the window activation that follows
+    /// a switch must find it there, as with Qt's `QCursor.setPos`).
+    fn warp(&self, x: i32, y: i32) -> bool {
+        self.call(false, |s| {
+            s.x.warp_pointer(x, y)?;
             s.x.sync()?;
             Ok(true)
         })
@@ -3534,14 +3574,14 @@ impl PlatformServices for LinuxPlatform {
         !self.is_wayland()
     }
 
-    /// X11: `None` (the UI toolkit warps the pointer). Wayland: compositor IPC or `ydotool`.
+    /// X11: `WarpPointer`. Wayland: compositor IPC or `ydotool`.
     ///
     /// sway and Hyprland place the pointer exactly through their IPC. `ydotool` emulates
     /// absolute moves with relative motion, which pointer acceleration distorts unless its
     /// virtual device uses a flat profile; that cannot be checked from here.
     fn move_cursor(&self, x: i32, y: i32) -> Option<bool> {
         if !self.is_wayland() {
-            return None;
+            return Some(self.ewmh.warp(x, y));
         }
         for argv in self.wayland_pointer_commands(x, y) {
             let started = self.now();
@@ -3558,6 +3598,15 @@ impl PlatformServices for LinuxPlatform {
             return Some(true);
         }
         Some(false)
+    }
+
+    /// X11: `QueryPointer`. Wayland: `None`; XWayland only sees the pointer over X11
+    /// windows.
+    fn cursor_position(&self) -> Option<(i32, i32)> {
+        if !self.x11_session() {
+            return None;
+        }
+        self.ewmh.pointer()
     }
 
     // ------------------------------------------------------------------ windows

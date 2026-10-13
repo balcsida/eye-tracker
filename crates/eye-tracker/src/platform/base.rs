@@ -240,8 +240,14 @@ pub trait PlatformServices: Send + Sync {
         true
     }
 
-    /// Move the pointer. Return `None` to let the caller use the UI toolkit's own cursor call.
+    /// Move the pointer. `None` means this system cannot move it (counted as a refusal).
     fn move_cursor(&self, _x: i32, _y: i32) -> Option<bool> {
+        None
+    }
+
+    /// The pointer position in global coordinates (Qt's `QCursor.pos()` in the Python app);
+    /// `None` when it cannot be read.
+    fn cursor_position(&self) -> Option<(i32, i32)> {
         None
     }
 
