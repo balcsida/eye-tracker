@@ -35,8 +35,11 @@ crossbeam-channel = "0.5.17"
 parking_lot = "0.12.5"
 # Numerics, images, inference
 nalgebra = "0.35.0"
-image = "0.25.10"
-imageproc = "0.27.0"
+# Only what the app decodes: IMAGE_SUFFIXES in vision/camera.rs (png, jpeg, bmp, webp, tiff, pnm),
+# plus jpeg for MJPEG camera frames.
+image = { version = "0.25.10", default-features = false, features = ["rayon", "png", "jpeg", "bmp", "webp", "tiff", "pnm"] }
+# The default features add `text` and `fft` (unused) and re-enable all of image's formats.
+imageproc = { version = "0.27.0", default-features = false, features = ["rayon"] }
 tract-tflite = "0.23.8"
 tract-onnx = "0.23.8"
 # No default features: `decoding` pulls in mozjpeg (C), which blocks cross-target checks; MJPEG
@@ -61,7 +64,7 @@ display-info = "0.5.9"
 tiny-skia = "0.11.4"
 # IPC, processes, hashing
 interprocess = "2.4.5"
-sysinfo = "0.39.6"
+sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 sha1 = "0.10"
 sha2 = "0.11.1"
 hex = "0.4.3"
