@@ -30,7 +30,8 @@ pub const EXIT_NOT_RUNNING: i32 = 3;
 pub const EXIT_INTERRUPTED: i32 = 130;
 
 /// Name of the console executable next to the windowed one in the Windows and macOS builds
-/// (packaging/pyinstaller/eye-tracker.spec). The Linux build has one executable for both roles.
+/// (packaging/windows/installer.iss, packaging/macos/make_app.sh). The Linux build has one
+/// executable for both roles.
 pub const FROZEN_CLI_NAME: &str = "eye-tracker-cli";
 
 pub const BACKEND_CHOICES: [&str; 3] = ["auto", "facemesh", "lite"];

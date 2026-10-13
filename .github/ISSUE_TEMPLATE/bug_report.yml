@@ -98,7 +98,7 @@ body:
         - macOS: `"/Applications/Eye Tracker.app/Contents/MacOS/eye-tracker-cli" doctor`
         - Linux AppImage: the AppImage file itself, e.g. `./EyeTracker-*.AppImage doctor`
         - Linux tarball: `./eye-tracker/eye-tracker doctor`
-        - From source: `uv run eye-tracker doctor`
+        - From source: `cargo run --release -- doctor`
 
         If the problem is about cameras, run `doctor --probe-cameras` instead.
       render: text

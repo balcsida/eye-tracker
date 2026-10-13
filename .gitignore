@@ -29,3 +29,6 @@ DESIGN.md
 # Rust
 /target
 /crates/eye-tracker/models/*.tmp
+
+# pi-subagents schedules and other local agent state
+/.pi/
