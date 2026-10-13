@@ -69,6 +69,9 @@ ksni.workspace = true
 x11rb.workspace = true
 zbus.workspace = true
 
+[build-dependencies]
+winresource.workspace = true
+
 [dev-dependencies]
 approx.workspace = true
 tempfile.workspace = true
