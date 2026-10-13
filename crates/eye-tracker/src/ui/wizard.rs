@@ -841,21 +841,26 @@ impl FirstRunWizard {
         });
         egui::Panel::bottom("wizard-buttons").show(ui, |ui| {
             ui.add_space(6.0);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Cancel").clicked() {
-                    self.reject();
-                }
-                if self.current == PAGE_FINISH {
-                    if ui.button("Finish").clicked() {
-                        self.accept();
+            // Straight in the panel, a right-to-left layout centres the buttons in all the height
+            // left, and the panel grows to hold them frame by frame until it covers the page; a
+            // row keeps it one line tall.
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("Cancel").clicked() {
+                        self.reject();
                     }
-                } else if ui.button("Next >").clicked() {
-                    self.next();
-                }
-                // No back button on the start page.
-                if self.back_id().is_some() && ui.button("< Back").clicked() {
-                    self.back();
-                }
+                    if self.current == PAGE_FINISH {
+                        if ui.button("Finish").clicked() {
+                            self.accept();
+                        }
+                    } else if ui.button("Next >").clicked() {
+                        self.next();
+                    }
+                    // No back button on the start page.
+                    if self.back_id().is_some() && ui.button("< Back").clicked() {
+                        self.back();
+                    }
+                });
             });
             ui.add_space(6.0);
         });

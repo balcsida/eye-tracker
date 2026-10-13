@@ -507,3 +507,48 @@ fn test_every_page_draws_headless() {
         e.wizard.next();
     }
 }
+
+/// The page fills the window between the title and the buttons, which sit at the bottom (a
+/// right-to-left layout straight in the button panel grew it over the page, frame by frame).
+#[test]
+fn test_wizard_buttons_sit_below_the_page() {
+    let mut e = wizard(Setup {
+        show_permissions: true,
+        ..Setup::default()
+    });
+    e.wizard.on_preview_frame(&Frame::filled(64, 48, [0, 0, 0]));
+    let ctx = egui::Context::default();
+    let window = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(680.0, 600.0));
+    for page in 0..5 {
+        let mut shapes = Vec::new();
+        for _ in 0..50 {
+            let input = egui::RawInput {
+                screen_rect: Some(window),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| e.wizard.draw(ui, 1000.0));
+            output.textures_delta.clear();
+            shapes = output.shapes;
+        }
+        // Where a text shows: the part of it its clip rect lets through.
+        let visible = |needle: &str| {
+            shapes.iter().find_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) if text.galley.text().contains(needle) => {
+                    Some(text.visual_bounding_rect().intersect(clipped.clip_rect))
+                }
+                _ => None,
+            })
+        };
+        let cancel = visible("Cancel").expect("the Cancel button is drawn");
+        assert!(
+            cancel.min.y > window.max.y - 50.0,
+            "page {page}: {cancel:?}"
+        );
+        if page == PAGE_WELCOME {
+            let body = visible("Runs entirely on this computer").expect("the page is drawn");
+            assert!(body.is_positive(), "the page is clipped away: {body:?}");
+            assert!(body.max.y < cancel.min.y);
+        }
+        e.wizard.next();
+    }
+}
