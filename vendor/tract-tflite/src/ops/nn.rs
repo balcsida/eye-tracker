@@ -46,7 +46,7 @@ pub fn register_all(reg: &mut Registry) {
 
     reg.reg_to_tract(BuiltinOperator::RELU, de_relu);
     reg.reg_to_tract(BuiltinOperator::RELU6, de_relu6);
-    // vision-spike patch: float16 weights (DEQUANTIZE f16 -> f32) and PRELU.
+    // patch: float16 weights (DEQUANTIZE f16 -> f32) and PRELU.
     reg.reg_to_tract(BuiltinOperator::DEQUANTIZE, de_dequantize_float);
     reg.reg_to_tract(BuiltinOperator::PRELU, de_prelu);
 
@@ -544,7 +544,7 @@ mod resize {
     }
 }
 
-// vision-spike patch: only the float flavour (float16 weights stored for an f32 graph).
+// patch: only the float flavour (float16 weights stored for an f32 graph).
 fn de_dequantize_float(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let input = op.inputs[0];
     let fact = op.ctx.target.outlet_fact(input)?.clone();
@@ -557,7 +557,7 @@ fn de_dequantize_float(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     op.ctx.target.wire_node(op.prefix, Cast::new(to), &[input])
 }
 
-// vision-spike patch: prelu(x) = max(x, 0) + alpha * min(x, 0).
+// patch: prelu(x) = max(x, 0) + alpha * min(x, 0).
 fn de_prelu(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let (x, alpha) = (op.inputs[0], op.inputs[1]);
     let p = op.prefix;
