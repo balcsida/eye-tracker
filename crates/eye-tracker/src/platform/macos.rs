@@ -2144,13 +2144,17 @@ mod system {
             }
             // SAFETY: a live handle and a NUL-terminated symbol name.
             let symbol = unsafe { libc::dlsym(library, c"SACLockScreenImmediate".as_ptr()) };
-            if symbol.is_null() {
-                return Err("no SACLockScreenImmediate".into());
-            }
-            // SAFETY: `int SACLockScreenImmediate(void)`
-            let lock: unsafe extern "C" fn() -> i32 = unsafe { std::mem::transmute(symbol) };
-            // SAFETY: as above.
-            Ok(unsafe { lock() })
+            let result = if symbol.is_null() {
+                Err("no SACLockScreenImmediate".into())
+            } else {
+                // SAFETY: `int SACLockScreenImmediate(void)`
+                let lock: unsafe extern "C" fn() -> i32 = unsafe { std::mem::transmute(symbol) };
+                // SAFETY: as above.
+                Ok(unsafe { lock() })
+            };
+            // SAFETY: the handle from `dlopen` above; `symbol` is not used afterwards.
+            unsafe { libc::dlclose(library) };
+            result
         }
 
         fn macos_major_version(&self) -> u32 {
