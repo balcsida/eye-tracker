@@ -25,8 +25,9 @@
 //!   `test_the_instance_lock_is_released_when_startup_raises`: creating the app and the server
 //!   cannot fail; a panic in the hand-over is checked.
 //! * `test_exec_quits_on_ctrl_c` and the other event-loop tests run [`EyeTrackerApp::step`] and
-//!   [`AppContext::shutdown`] (what the event loop does) instead of eframe, and a Ctrl+C now exits
-//!   with [`EXIT_INTERRUPTED`] (the CLI's code) instead of 0. The signal tests are Unix only.
+//!   [`AppContext::shutdown`] (what the event loop does) instead of eframe, so the exit code of a
+//!   Ctrl+C (0, as in Python; only the event loop returns it) is not asserted. The signal tests
+//!   are Unix only.
 //! * `test_automatic_calibration_reasons_only_notify` replaced `tray.notify`, which ignored the
 //!   startup mute; here the login start's quiet period is 0 instead.
 
@@ -990,6 +991,28 @@ fn test_exec_quits_on_ipc_quit() {
     assert!(h.app().closed());
     assert!(h.worker().s().stopped);
     assert!(!ipc::is_running(ipc::PROBE_TIMEOUT_MS));
+}
+
+#[test]
+fn test_the_instance_lock_is_held_until_the_controller_has_stopped() {
+    // Regression: the server (and with it the lock) was closed before the camera was released,
+    // so a relaunch right after a quit started a second instance.
+    let _env = env();
+    let mut h = build(Setup::default());
+    let held_while_stopping = Arc::new(Mutex::new(None));
+    let seen = held_while_stopping.clone();
+    h.worker().s().on_stop = Some(Box::new(move || {
+        let other = InstanceLock::new(None);
+        let acquired = other.acquire();
+        other.release();
+        *seen.lock() = Some(!acquired);
+    }));
+    h.ctx.shutdown();
+    assert!(h.worker().s().stopped);
+    assert_eq!(*held_while_stopping.lock(), Some(true));
+    let next = InstanceLock::new(None);
+    assert!(next.acquire()); // released once the app has stopped
+    next.release();
 }
 
 #[test]

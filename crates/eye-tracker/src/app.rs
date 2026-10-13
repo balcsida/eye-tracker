@@ -46,7 +46,7 @@ use egui::{ViewportCommand, ViewportId};
 use parking_lot::Mutex;
 use serde_json::Value;
 
-use crate::cli::{EXIT_ERROR, EXIT_INTERRUPTED, EXIT_OK, cli_command_text};
+use crate::cli::{EXIT_ERROR, EXIT_OK, cli_command_text};
 use crate::config::Settings;
 use crate::engine::controller::{Controller, ControllerEvent, ControllerOptions};
 use crate::ipc::{self, InstanceLock, InstanceServer};
@@ -287,11 +287,13 @@ impl AppContext {
 
     /// Stop accepting commands, close every window and release the camera. Idempotent.
     pub fn shutdown(&mut self) {
-        if let Some(server) = &mut self.server {
-            server.close();
-        }
+        // The app first: until it has released the camera, hotkeys and files, the server keeps
+        // the instance lock so a relaunch waits instead of starting a second instance.
         if let Some(app) = &mut self.app {
             app.shutdown();
+        }
+        if let Some(server) = &mut self.server {
+            server.close();
         }
     }
 }
@@ -2589,13 +2591,8 @@ fn run_event_loop(context: &mut AppContext) -> i32 {
         show_error(&format!("{APP_NAME} could not start:\n\n{err}"));
         return EXIT_ERROR;
     }
-    let code = if context.app.as_ref().is_some_and(EyeTrackerApp::interrupted) {
-        EXIT_INTERRUPTED
-    } else {
-        EXIT_OK
-    };
-    log::info!("{APP_NAME} exited (code {code})");
-    code
+    log::info!("{APP_NAME} exited (code {EXIT_OK})");
+    EXIT_OK
 }
 
 #[cfg(test)]

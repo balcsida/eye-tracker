@@ -374,6 +374,8 @@ pub(crate) struct FakeWorkerState {
     pub(crate) reconfigures: Vec<(bool, bool)>,
     pub(crate) started: bool,
     pub(crate) stopped: bool,
+    /// Runs once when the worker is stopped (what the test observes at that moment).
+    pub(crate) on_stop: Option<Box<dyn FnOnce() + Send>>,
     pub(crate) backend_info: Option<(String, String)>,
     pub(crate) stats: WorkerStats,
     pub(crate) backend_factory: Option<BackendFactory>,
@@ -404,6 +406,7 @@ impl FakeWorker {
                 reconfigures: Vec::new(),
                 started: false,
                 stopped: false,
+                on_stop: None,
                 backend_info: Some((BACKEND.0.into(), BACKEND.1.into())),
                 stats: WorkerStats {
                     fps: 4.0,
@@ -464,7 +467,14 @@ impl WorkerLike for FakeWorker {
     }
 
     fn stop(&self, _timeout: f64) {
-        self.s().stopped = true;
+        let on_stop = {
+            let mut state = self.s();
+            state.stopped = true;
+            state.on_stop.take()
+        };
+        if let Some(on_stop) = on_stop {
+            on_stop();
+        }
     }
 
     fn set_interval(&self, seconds: f64) {
