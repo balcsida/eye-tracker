@@ -93,7 +93,7 @@ objc2-app-kit = "0.3.2"
 objc2-core-graphics = "0.3.2"
 objc2-application-services = "0.3.2"
 core-foundation = "0.10.1"
-x11rb = { version = "0.14.0", features = ["xtest", "xkb", "randr"] }
+x11rb = { version = "0.14.0", features = ["xtest", "xkb", "randr", "dpms", "screensaver"] }
 zbus = "5.19.0"
 libc = "0.2"
 # Dev
