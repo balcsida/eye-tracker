@@ -128,11 +128,21 @@ objc2-vision = { version = "0.3.2", default-features = false, features = [
   "VNRequestHandler",
   "VNTypes",
 ] }
+# ... and the facemesh backend's Core ML engine (compile, load, predict).
 objc2-core-ml = { version = "0.3.2", default-features = false, features = [
   "std",
+  "block2",
   "MLComputeDeviceProtocol",
+  "MLDictionaryFeatureProvider",
+  "MLFeatureProvider",
+  "MLFeatureValue",
+  "MLModel",
+  "MLModelConfiguration",
+  "MLModel_MLModelCompilation",
+  "MLMultiArray",
   "MLNeuralEngineComputeDevice",
 ] }
+block2 = "0.6.2"
 core-foundation = "0.10.1"
 x11rb = { version = "0.14.0", features = ["xtest", "xkb", "randr", "dpms", "screensaver"] }
 zbus = "5.19.0"

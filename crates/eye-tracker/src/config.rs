@@ -351,6 +351,10 @@ settings! { platform;
                 CPU); 'apple' (macOS only) uses Apple's Vision framework for head pose and \
                 pupils, on the Neural Engine where available. 'auto' picks facemesh."
         },
+        coreml: bool = true => {
+            doc = "macOS: run the facemesh landmark model through Core ML, on the Neural Engine \
+                when available; off means tract on the CPU."
+        },
         start_paused: bool = false => { doc = "Start with tracking paused." },
         first_run_done: bool = false => {
             doc = "Set after the first-run wizard completes. Until then a walk-away action that \

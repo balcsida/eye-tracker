@@ -903,6 +903,7 @@ fn cmd_bench(env: &mut Env, global: &GlobalOptions, seconds: f64, json: bool) ->
         height: usize::try_from(settings.camera.height).unwrap_or(480),
         api: settings.camera.api.clone(),
         idle_fps: None,
+        coreml: settings.general.coreml,
     };
     let result = match diagnostics::run_bench(seconds, &device, &backend, &options) {
         Ok(result) => result,

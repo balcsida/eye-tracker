@@ -37,7 +37,7 @@ const IRIS_H: usize = 6;
 const IRIS_V: usize = 7;
 
 fn backend() -> FaceMeshBackend {
-    FaceMeshBackend::new(1).unwrap()
+    FaceMeshBackend::new(1, false).unwrap()
 }
 
 fn run(backend: &mut FaceMeshBackend, frame: &Frame, start: f64, n: usize) -> Observation {
@@ -49,7 +49,7 @@ fn run(backend: &mut FaceMeshBackend, frame: &Frame, start: f64, n: usize) -> Ob
 }
 
 fn features_with(frame: &Frame, max_faces: usize) -> Vec<f64> {
-    let mut instance = FaceMeshBackend::new(max_faces).unwrap();
+    let mut instance = FaceMeshBackend::new(max_faces, false).unwrap();
     let obs = run(&mut instance, frame, 1.0, 3);
     instance.close();
     obs.features.unwrap()
@@ -552,7 +552,7 @@ fn test_landmark_model_wrong_network() {
 #[test]
 fn test_landmark_self_test_rejects_wrong_values() {
     let net = build_landmark_net(super::super::landmark_model()).unwrap();
-    let err = check_landmark_net_against(&net, (40.0, 200.0)).unwrap_err();
+    let err = check_landmark_net_against(&LandmarkEngine::Tract(net), (40.0, 200.0)).unwrap_err();
     assert!(err.contains("wrong values"), "{err}");
 }
 

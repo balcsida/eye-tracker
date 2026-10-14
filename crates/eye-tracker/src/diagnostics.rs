@@ -1643,6 +1643,8 @@ pub struct BenchOptions {
     pub api: String,
     /// The idle mode's rate; the balanced profile's idle rate when `None`.
     pub idle_fps: Option<f64>,
+    /// Let facemesh use Core ML (`general.coreml`).
+    pub coreml: bool,
 }
 
 impl Default for BenchOptions {
@@ -1652,6 +1654,7 @@ impl Default for BenchOptions {
             height: 480,
             api: "auto".into(),
             idle_fps: None,
+            coreml: true,
         }
     }
 }
@@ -1697,7 +1700,7 @@ pub fn run_bench(
             || format!("Could not open {}", describe_device(device)),
         )));
     }
-    let result = create_backend(backend, 1)
+    let result = create_backend(backend, 1, options.coreml)
         .map_err(BenchError::from)
         .and_then(|mut engine| {
             let result = bench_with(&mut source, engine.as_mut(), seconds, rate);

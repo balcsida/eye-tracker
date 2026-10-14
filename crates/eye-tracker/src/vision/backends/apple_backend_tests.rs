@@ -312,7 +312,7 @@ fn test_real_face_agrees_with_facemesh() {
     let Some(path) = face_image() else { return };
     let frame = camera_like(&load(&path), 640);
     let apple = backend().process(&frame, 1.0);
-    let mut facemesh = FaceMeshBackend::new(1).unwrap();
+    let mut facemesh = FaceMeshBackend::new(1, false).unwrap();
     let mut reference = facemesh.process(&frame, 1.0);
     for i in 0..3 {
         reference = facemesh.process(&frame, 1.1 + 0.1 * f64::from(i));

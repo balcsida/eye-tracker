@@ -62,7 +62,7 @@ pub(crate) fn camera_like(image: &Frame, longest: usize) -> Frame {
 /// One instance of every available backend (the parametrised `backend` fixture).
 fn each_backend(test: impl Fn(&mut dyn VisionBackend)) {
     for name in available_backends() {
-        let mut backend = create_backend(name, 1).unwrap();
+        let mut backend = create_backend(name, 1, false).unwrap();
         test(backend.as_mut());
         backend.close();
     }
@@ -134,7 +134,7 @@ fn test_available_backends_needs_every_model() {
 
 #[test]
 fn test_unknown_backend_raises() {
-    let err = create_backend("tensorflow", 1).err().unwrap();
+    let err = create_backend("tensorflow", 1, false).err().unwrap();
     assert!(err.0.contains("Unknown vision backend"), "{err}");
     let err = backend_class("tensorflow").unwrap_err();
     assert!(err.0.contains("auto, facemesh, lite"), "{err}");
@@ -143,7 +143,7 @@ fn test_unknown_backend_raises() {
 #[cfg(not(target_os = "macos"))]
 #[test]
 fn test_apple_needs_macos() {
-    let err = create_backend("apple", 1).err().unwrap();
+    let err = create_backend("apple", 1, false).err().unwrap();
     assert!(err.0.contains("needs macOS"), "{err}");
 }
 
@@ -160,7 +160,7 @@ fn test_legacy_names_map_to_the_new_backends() {
 
 #[test]
 fn test_auto_prefers_facemesh() {
-    let mut instance = create_backend("auto", 1).unwrap();
+    let mut instance = create_backend("auto", 1, false).unwrap();
     assert_eq!(instance.name(), available_backends()[0]);
     assert_eq!(instance.name(), "facemesh");
     assert_eq!(backend_class("auto").unwrap().name(), instance.name());
@@ -179,7 +179,7 @@ fn test_auto_falls_back_to_lite() {
                 "simulated landmark model failure".into(),
             ))
         } else {
-            create(name, max_faces)
+            create(name, max_faces, false)
         }
     })
     .unwrap();
@@ -207,7 +207,7 @@ fn test_explicit_backend_does_not_fall_back() {
         if name == "facemesh" {
             Err(BackendUnavailable("facemesh broken".into()))
         } else {
-            create(name, max_faces)
+            create(name, max_faces, false)
         }
     })
     .err()
@@ -660,9 +660,9 @@ fn mirror(frame: &Frame) -> Frame {
 fn test_real_face_mirror_flips_yaw_roll_and_iris() {
     let Some(path) = face_image() else { return };
     let frame = camera_like(&load(&path), 640);
-    let a = run(&mut FaceMeshBackend::new(1).unwrap(), &frame, 1.0, 3);
+    let a = run(&mut FaceMeshBackend::new(1, false).unwrap(), &frame, 1.0, 3);
     let b = run(
-        &mut FaceMeshBackend::new(1).unwrap(),
+        &mut FaceMeshBackend::new(1, false).unwrap(),
         &mirror(&frame),
         1.0,
         3,
@@ -681,7 +681,7 @@ fn test_real_face_iris_is_position_and_scale_invariant() {
     let Some(path) = face_image() else { return };
     let image = load(&path);
     let base = run(
-        &mut FaceMeshBackend::new(1).unwrap(),
+        &mut FaceMeshBackend::new(1, false).unwrap(),
         &camera_like(&image, 640),
         1.0,
         3,
@@ -698,7 +698,7 @@ fn test_real_face_iris_is_position_and_scale_invariant() {
     let smaller = camera_like(&image, 420);
     let base = base.features.unwrap();
     for frame in [shifted, smaller] {
-        let obs = run(&mut FaceMeshBackend::new(1).unwrap(), &frame, 1.0, 3);
+        let obs = run(&mut FaceMeshBackend::new(1, false).unwrap(), &frame, 1.0, 3);
         let features = obs.features.unwrap();
         assert!(approx(features[6], base[6], 0.05)); // iris_h
         assert!(approx(features[7], base[7], 0.05)); // iris_v

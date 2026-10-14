@@ -2,8 +2,9 @@
 //!
 //! This is the accurate default. It runs MediaPipe's face landmark network (the
 //! `face_landmarks_detector.tflite` member of the Face Landmarker bundle, Apache-2.0, see
-//! `models/NOTICE.md`) with tract. The MediaPipe runtime itself is deliberately not used: it
-//! contains a usage-logging client that uploads to Google servers, and this app never touches
+//! `models/NOTICE.md`) with tract, or on macOS by default with Core ML (a converted copy of the
+//! same network, see [`LandmarkEngine`]). The MediaPipe runtime itself is deliberately not used:
+//! it contains a usage-logging client that uploads to Google servers, and this app never touches
 //! the network.
 //!
 //! Each analysed frame costs about one landmark inference (about 13 ms on one core of a current
@@ -721,6 +722,64 @@ impl PoseEstimator {
 // ----------------------------------------------------------------------------
 // Model loading
 
+/// What runs the landmark network: tract on the CPU everywhere, or Core ML on macOS (the Neural
+/// Engine where the Mac has one). Chosen when the backend is created (see [`choose_engine`]); a
+/// Core ML failure later switches to tract for the rest of the run.
+pub enum LandmarkEngine {
+    Tract(LandmarkNet),
+    #[cfg(target_os = "macos")]
+    CoreMl(super::facemesh_coreml::CoreMlNet),
+    /// Stands in for Core ML in the tests of the engine choice and the fallback.
+    #[cfg(test)]
+    #[allow(clippy::type_complexity)]
+    Fake(Box<dyn Fn(&Tensor) -> Result<(Vec<f32>, f32), String>>),
+}
+
+impl LandmarkEngine {
+    /// Raw landmarks (478 x 3, network-input pixels) and the presence logit for an NHWC RGB
+    /// input in 0..1.
+    fn forward(&self, input: Tensor) -> Result<(Vec<f32>, f32), String> {
+        match self {
+            Self::Tract(net) => net.forward(input).map_err(|err| format!("{err:#}")),
+            #[cfg(target_os = "macos")]
+            Self::CoreMl(net) => net.forward(&input),
+            #[cfg(test)]
+            Self::Fake(forward) => forward(&input),
+        }
+    }
+}
+
+/// The landmark engine: Core ML when `coreml` allows it and `load_coreml` gives an engine that
+/// passes the self-test, tract (`load_tract`) otherwise.
+pub fn choose_engine(
+    coreml: bool,
+    load_coreml: impl FnOnce() -> Result<LandmarkEngine, String>,
+    load_tract: impl FnOnce() -> Result<LandmarkEngine, BackendUnavailable>,
+) -> Result<LandmarkEngine, BackendUnavailable> {
+    if coreml {
+        match load_coreml().and_then(|engine| check_landmark_net(&engine).map(|()| engine)) {
+            Ok(engine) => {
+                log::info!("facemesh: landmarks via Core ML (compute units: all)");
+                return Ok(engine);
+            }
+            Err(err) => log::warn!("facemesh: Core ML unavailable, using tract: {err}"),
+        }
+    }
+    let engine = load_tract()?;
+    log::info!("facemesh: landmarks via tract");
+    Ok(engine)
+}
+
+#[cfg(target_os = "macos")]
+fn load_coreml_engine() -> Result<LandmarkEngine, String> {
+    super::facemesh_coreml::CoreMlNet::load(&crate::paths::data_dir()).map(LandmarkEngine::CoreMl)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn load_coreml_engine() -> Result<LandmarkEngine, String> {
+    Err("Core ML needs macOS".into())
+}
+
 /// The landmark network: an optimised tract plan and the positions of its two outputs.
 pub struct LandmarkNet {
     plan: Arc<TypedRunnableModel>,
@@ -772,17 +831,30 @@ const SELF_TEST_IRIS: (f64, f64) = (95.10, 85.45);
 const SELF_TEST_PX_TOLERANCE: f64 = 2.0;
 const SELF_TEST_FLAG_TOLERANCE: f64 = 1.5;
 
+/// The network input for a BGR crop: `blobFromImage(crop, 1 / 255, swapRB=True)`, laid out NHWC
+/// as the network expects.
+fn input_tensor(crop: &[u8]) -> Tensor {
+    let scale = (1.0f64 / 255.0) as f32;
+    tract_ndarray::Array4::from_shape_fn((1, INPUT_SIZE, INPUT_SIZE, 3), |(_, y, x, c)| {
+        f32::from(crop[(y * INPUT_SIZE + x) * 3 + 2 - c]) * scale
+    })
+    .into()
+}
+
 /// Make sure the network runs and computes what it should.
 ///
 /// A runtime that loads the model but returns the wrong tensors would give garbage landmarks;
 /// comparing one fixed input against reference values turns it into a clean "unavailable".
 /// Fails when the outputs have the wrong shape or values.
-fn check_landmark_net(net: &LandmarkNet) -> Result<(), String> {
+fn check_landmark_net(net: &LandmarkEngine) -> Result<(), String> {
     check_landmark_net_against(net, SELF_TEST_MEAN)
 }
 
-fn check_landmark_net_against(net: &LandmarkNet, reference_mean: (f64, f64)) -> Result<(), String> {
-    let (landmarks, flag) = net.forward(self_test_blob()).map_err(|e| e.to_string())?;
+fn check_landmark_net_against(
+    net: &LandmarkEngine,
+    reference_mean: (f64, f64),
+) -> Result<(), String> {
+    let (landmarks, flag) = net.forward(self_test_blob())?;
     if landmarks.len() != NUM_LANDMARKS * 3 {
         return Err(format!(
             "unexpected output size {} (not the landmark model)",
@@ -854,8 +926,9 @@ fn build_landmark_net(data: &[u8]) -> TractResult<LandmarkNet> {
 /// Load and self-test the landmark network from the model bytes.
 ///
 /// Fails with [`BackendUnavailable`] when the model cannot be run correctly.
-pub fn load_landmark_net_from(data: &[u8]) -> Result<LandmarkNet, BackendUnavailable> {
+pub fn load_landmark_net_from(data: &[u8]) -> Result<LandmarkEngine, BackendUnavailable> {
     let net = build_landmark_net(data).map_err(|err| unrunnable(&format!("{err:#}")))?;
+    let net = LandmarkEngine::Tract(net);
     check_landmark_net(&net).map_err(|err| unrunnable(&err))?;
     Ok(net)
 }
@@ -869,7 +942,7 @@ fn unrunnable(detail: &str) -> BackendUnavailable {
 /// Load and self-test the landmark network at `path`.
 ///
 /// Fails with [`BackendUnavailable`] when the model is missing or cannot be run correctly.
-pub fn load_landmark_net(path: &Path) -> Result<LandmarkNet, BackendUnavailable> {
+pub fn load_landmark_net(path: &Path) -> Result<LandmarkEngine, BackendUnavailable> {
     let data = std::fs::read(path).map_err(|_| {
         BackendUnavailable(format!(
             "Face landmark model not found at {} (run cargo xtask fetch-models)",
@@ -975,7 +1048,7 @@ pub(crate) struct TestHooks {
 ///
 /// Fails to construct with [`BackendUnavailable`] when a model cannot be loaded.
 pub struct FaceMeshBackend {
-    net: Option<LandmarkNet>,
+    net: Option<LandmarkEngine>,
     detector_model: Option<PathBuf>,
     detector: Option<YuNet>,
     guard_detector: Option<YuNet>,
@@ -1015,9 +1088,10 @@ impl FaceMeshBackend {
     pub const FEATURE_VERSION: &'static str = "facemesh-pose-iris-1";
     pub const GAZE_FEATURES: &'static [&'static str] = &["yaw", "pitch", "iris_h", "iris_v"];
 
-    /// The backend with the embedded models.
-    pub fn new(max_faces: usize) -> Result<Self, BackendUnavailable> {
-        Self::with_paths(None, max_faces, None, None)
+    /// The backend with the embedded models; `coreml` runs the landmark network through Core ML
+    /// where possible (macOS).
+    pub fn new(max_faces: usize, coreml: bool) -> Result<Self, BackendUnavailable> {
+        Self::build(None, max_faces, None, None, coreml)
     }
 
     /// The backend with model files from disk where given (the embedded ones otherwise):
@@ -1029,6 +1103,16 @@ impl FaceMeshBackend {
         max_faces: usize,
         geometry_path: Option<&Path>,
         detector_path: Option<&Path>,
+    ) -> Result<Self, BackendUnavailable> {
+        Self::build(model_path, max_faces, geometry_path, detector_path, false)
+    }
+
+    fn build(
+        model_path: Option<&Path>,
+        max_faces: usize,
+        geometry_path: Option<&Path>,
+        detector_path: Option<&Path>,
+        coreml: bool,
     ) -> Result<Self, BackendUnavailable> {
         limit_opencv_threads(MAX_OPENCV_THREADS);
         let geometry = match geometry_path {
@@ -1042,7 +1126,12 @@ impl FaceMeshBackend {
         })?;
         let net = match model_path {
             Some(path) => load_landmark_net(path)?,
-            None => load_landmark_net_from(super::landmark_model())?,
+            // Core ML runs the converted embedded model, never a model file from elsewhere.
+            None => choose_engine(
+                coreml && cfg!(target_os = "macos"),
+                load_coreml_engine,
+                || load_landmark_net_from(super::landmark_model()),
+            )?,
         };
         let detector_model = detector_path.map(Path::to_path_buf);
         let detector = create_yunet(detector_model.as_deref(), DETECT_WIDTH)?;
@@ -1374,24 +1463,10 @@ impl FaceMeshBackend {
         self.run_net(frame, roi)
     }
 
-    fn run_net(&self, frame: &Frame, roi: &Roi) -> Option<Inferred> {
-        let net = self.net.as_ref()?;
+    fn run_net(&mut self, frame: &Frame, roi: &Roi) -> Option<Inferred> {
         let m = roi.transform();
         let crop = warp_affine(frame, &m, INPUT_SIZE);
-        // blobFromImage(crop, 1 / 255, swapRB=True), laid out NHWC as the network expects.
-        let scale = (1.0f64 / 255.0) as f32;
-        let input: Tensor =
-            tract_ndarray::Array4::from_shape_fn((1, INPUT_SIZE, INPUT_SIZE, 3), |(_, y, x, c)| {
-                f32::from(crop[(y * INPUT_SIZE + x) * 3 + 2 - c]) * scale
-            })
-            .into();
-        let (raw, flag) = match net.forward(input) {
-            Ok(out) => out,
-            Err(err) => {
-                log::debug!("Landmark inference failed: {err:#}");
-                return None;
-            }
-        };
+        let (raw, flag) = self.forward(|| input_tensor(&crop))?;
         let logit = f64::from(flag);
         if logit.is_nan() || sigmoid(logit) < PRESENCE_THRESHOLD {
             return None;
@@ -1406,6 +1481,29 @@ impl FaceMeshBackend {
             return None;
         }
         Some((points, logit))
+    }
+
+    /// Run the landmark network on `input()`. When an engine other than tract fails, tract takes
+    /// over for the rest of the run and computes this crop.
+    fn forward(&mut self, input: impl Fn() -> Tensor) -> Option<(Vec<f32>, f32)> {
+        let engine = self.net.as_ref()?;
+        let err = match engine.forward(input()) {
+            Ok(out) => return Some(out),
+            Err(err) => err,
+        };
+        if matches!(engine, LandmarkEngine::Tract(_)) {
+            log::debug!("Landmark inference failed: {err}");
+            return None;
+        }
+        log::warn!("facemesh: Core ML failed ({err}); landmarks via tract from now on");
+        match load_landmark_net_from(super::landmark_model()) {
+            Ok(tract) => self.net = Some(tract),
+            Err(load) => {
+                log::warn!("facemesh: tract unavailable too: {load}");
+                return None;
+            }
+        }
+        self.net.as_ref()?.forward(input()).ok()
     }
 
     /// YuNet detections (rows in frame pixels) with score >= `DETECTION_SCORE`.

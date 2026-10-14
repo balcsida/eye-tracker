@@ -4,14 +4,17 @@
 //! (YuNet's five landmarks: head pose only, lowest CPU) is the fallback. Both run in-process with
 //! tract (the TFLite landmark network and the ONNX YuNet detector), and nothing touches the
 //! network. The model files are embedded in the binary; nothing is downloaded at run time. On
-//! macOS, `apple` (only when chosen) runs Apple's Vision framework instead: its own face models,
-//! head pose and pupils, no model files.
+//! macOS, facemesh runs its landmark network through Core ML instead of tract unless
+//! `general.coreml` is off (`facemesh_coreml`), and `apple` (only when chosen) runs Apple's Vision
+//! framework: its own face models, head pose and pupils, no model files.
 
 #[cfg(target_os = "macos")]
 pub mod apple_backend;
 pub mod base;
 pub mod face_geometry;
 pub mod facemesh_backend;
+#[cfg(target_os = "macos")]
+pub mod facemesh_coreml;
 pub mod lite_backend;
 pub mod overlay;
 pub mod pnp;
@@ -68,6 +71,28 @@ const LEGACY_NAMES: [(&str, &str); 2] = [("mediapipe", "facemesh"), ("opencv", "
 pub fn landmark_model() -> &'static [u8] {
     include_bytes!("../../../models/face_landmarks_detector.tflite")
 }
+
+/// The landmark network converted to a Core ML package by `tools/coreml/convert.py`: each file's
+/// path inside `FaceLandmarks.mlpackage` and its bytes.
+#[cfg(target_os = "macos")]
+pub const COREML_LANDMARK_PACKAGE: [(&str, &[u8]); 3] = [
+    (
+        "Manifest.json",
+        include_bytes!("../../../models/FaceLandmarks.mlpackage/Manifest.json"),
+    ),
+    (
+        "Data/com.apple.CoreML/model.mlmodel",
+        include_bytes!(
+            "../../../models/FaceLandmarks.mlpackage/Data/com.apple.CoreML/model.mlmodel"
+        ),
+    ),
+    (
+        "Data/com.apple.CoreML/weights/weight.bin",
+        include_bytes!(
+            "../../../models/FaceLandmarks.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
+        ),
+    ),
+];
 
 /// YuNet face detector (ONNX).
 pub fn yunet_model() -> &'static [u8] {
@@ -176,16 +201,20 @@ fn class_among(name: &str, available: &[&str]) -> Result<BackendClass, BackendUn
 
 /// Create a vision backend.
 ///
-/// `"auto"` tries `facemesh` first and falls back to `lite` (and on macOS then to `apple`). Call
-/// this on the thread that will use the backend.
+/// `"auto"` tries `facemesh` first and falls back to `lite` (and on macOS then to `apple`).
+/// `coreml` lets facemesh run its landmark network through Core ML (macOS only, the
+/// `general.coreml` setting). Call this on the thread that will use the backend.
 ///
 /// Fails with [`BackendUnavailable`] when the requested backend (or, for `"auto"`, every backend)
 /// cannot be created. The message says why.
 pub fn create_backend(
     name: &str,
     max_faces: usize,
+    coreml: bool,
 ) -> Result<Box<dyn VisionBackend>, BackendUnavailable> {
-    create_with(name, max_faces, create)
+    create_with(name, max_faces, |name, max_faces| {
+        create(name, max_faces, coreml)
+    })
 }
 
 fn create_with(
@@ -253,9 +282,13 @@ fn class(name: &str) -> BackendClass {
     }
 }
 
-fn create(name: &str, max_faces: usize) -> Result<Box<dyn VisionBackend>, BackendUnavailable> {
+fn create(
+    name: &str,
+    max_faces: usize,
+    coreml: bool,
+) -> Result<Box<dyn VisionBackend>, BackendUnavailable> {
     match name {
-        "facemesh" => Ok(Box::new(FaceMeshBackend::new(max_faces)?)),
+        "facemesh" => Ok(Box::new(FaceMeshBackend::new(max_faces, coreml)?)),
         #[cfg(target_os = "macos")]
         "apple" => Ok(Box::new(AppleBackend::new(max_faces)?)),
         _ => Ok(Box::new(LiteBackend::new(max_faces)?)),

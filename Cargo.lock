@@ -1782,6 +1782,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "approx",
+ "block2 0.6.2",
  "clap",
  "core-foundation 0.10.1",
  "crossbeam-channel",
@@ -3930,6 +3931,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "201b055e6acfa0f9f15568255d3f03ce2b54bc86d1814442dc69138e36813e18"
 dependencies = [
+ "block2 0.6.2",
  "objc2 0.6.5",
  "objc2-foundation 0.3.2",
 ]

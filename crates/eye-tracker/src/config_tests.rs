@@ -447,7 +447,7 @@ fn test_describe_settings_lists_every_setting_in_file_order() {
         rows.last().map(|r| r.key.as_str()),
         Some("ui.show_gaze_overlay")
     );
-    assert_eq!(rows.len(), 59);
+    assert_eq!(rows.len(), 60);
     // Every row's key is a key of the serialized settings.
     let dict = Settings::default().to_dict();
     for r in &rows {

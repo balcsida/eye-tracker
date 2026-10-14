@@ -313,7 +313,8 @@ fn non_default_settings() -> Settings {
 /// focus is experimental: the dialog offers the switch and the precision, the
 /// finer tuning is in settings.json only (docs/configuration.md).
 /// `panes.desktop_apps` has a checkbox: it reads another app's accessibility
-/// tree, so it is a visible, deliberate choice (off by default).
+/// tree, so it is a visible, deliberate choice (off by default). `general.coreml`
+/// (macOS: Core ML or tract for the landmark model) is a settings.json switch.
 fn unbound() -> BTreeSet<String> {
     let mut keys: BTreeSet<String> = [
         "dwell_ms",
@@ -331,6 +332,7 @@ fn unbound() -> BTreeSet<String> {
     .map(|name| format!("panes.{name}"))
     .collect();
     keys.insert("general.first_run_done".into());
+    keys.insert("general.coreml".into());
     keys
 }
 

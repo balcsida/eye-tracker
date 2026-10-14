@@ -586,8 +586,10 @@ pub fn source_factory(settings: &Settings) -> SourceFactory {
 /// The vision backend the settings select, created by the worker.
 pub fn backend_factory(settings: &Settings, max_faces: usize) -> BackendFactory {
     let name = settings.general.backend.clone();
+    let coreml = settings.general.coreml;
     Box::new(move || {
-        crate::vision::backends::create_backend(&name, max_faces).map_err(FactoryError::from)
+        crate::vision::backends::create_backend(&name, max_faces, coreml)
+            .map_err(FactoryError::from)
     })
 }
 
@@ -1567,7 +1569,8 @@ impl Controller {
             self.refit_after_trim();
         }
 
-        let backend_changed = old.general.backend != new.general.backend;
+        let backend_changed =
+            old.general.backend != new.general.backend || old.general.coreml != new.general.coreml;
         let source_changed = old.camera != new.camera || camera_fps(&old) != camera_fps(&new);
         if backend_changed {
             *self.expected_cache.borrow_mut() = None;
