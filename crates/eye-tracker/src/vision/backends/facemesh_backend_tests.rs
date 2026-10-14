@@ -1,7 +1,12 @@
-//! Tests for the face-mesh backend (MediaPipe's landmark network run with tract).
+//! Tests for the face-mesh backend (MediaPipe's landmark network run with tract, or with Core ML
+//! on macOS).
 //!
 //! Pure helpers are tested with synthetic landmarks; the backend itself runs on drawn cartoon
-//! faces (`testing::face_drawing`), which the landmark network accepts.
+//! faces (`testing::face_drawing`), which the landmark network accepts. The backend tests run
+//! tract; the choice of engine and the fallback are tested with a fake Core ML engine, and on
+//! macOS the real Core ML engine is compiled into a temporary directory and compared with tract.
+//! The timing comparison only prints (and is ignored by default: run it with
+//! `--release --ignored`).
 //!
 //! The Python tests monkeypatched `_infer`, `_detect` and `roi_from_detection`; here the
 //! backend's `TestHooks` do the same (a replacement `infer` that may call through, call counters,
@@ -590,6 +595,218 @@ fn test_missing_detector() {
         .err()
         .unwrap();
     assert!(err.0.contains("YuNet model not found"), "{err}");
+}
+
+// ------------------------------------------------------------ landmark engines
+fn tract_engine() -> LandmarkEngine {
+    load_landmark_net_from(super::super::landmark_model()).unwrap()
+}
+
+/// A Core ML stand-in that computes what tract computes, counting its calls.
+fn fake_like_tract(calls: Rc<Cell<usize>>) -> LandmarkEngine {
+    let tract = tract_engine();
+    LandmarkEngine::Fake(Box::new(move |input| {
+        calls.set(calls.get() + 1);
+        tract.forward(input.clone())
+    }))
+}
+
+#[test]
+fn test_engine_choice_takes_core_ml_when_it_passes_the_self_test() {
+    let calls = Rc::new(Cell::new(0));
+    let fake = fake_like_tract(calls.clone());
+    let engine = choose_engine(true, || Ok(fake), || panic!("tract is not needed")).unwrap();
+    assert!(matches!(engine, LandmarkEngine::Fake(_)));
+    assert_eq!(calls.get(), 1); // the self-test
+}
+
+#[test]
+fn test_engine_choice_without_core_ml_never_tries_it() {
+    let engine = choose_engine(false, || panic!("Core ML is off"), || Ok(tract_engine())).unwrap();
+    assert!(matches!(engine, LandmarkEngine::Tract(_)));
+}
+
+#[test]
+fn test_engine_choice_falls_back_to_tract_when_core_ml_does_not_load() {
+    let engine = choose_engine(true, || Err("no Core ML".into()), || Ok(tract_engine())).unwrap();
+    assert!(matches!(engine, LandmarkEngine::Tract(_)));
+}
+
+#[test]
+fn test_engine_choice_falls_back_to_tract_when_core_ml_computes_wrong_values() {
+    let wrong = LandmarkEngine::Fake(Box::new(|_| Ok((vec![0.0; NUM_LANDMARKS * 3], 20.0))));
+    let engine = choose_engine(true, || Ok(wrong), || Ok(tract_engine())).unwrap();
+    assert!(matches!(engine, LandmarkEngine::Tract(_)));
+}
+
+#[test]
+fn test_engine_choice_reports_a_broken_tract() {
+    let err = choose_engine(
+        true,
+        || Err("no Core ML".into()),
+        || Err(BackendUnavailable("broken".into())),
+    )
+    .err()
+    .unwrap();
+    assert_eq!(err.0, "broken");
+}
+
+/// The first Core ML failure hands the crop and every later one to tract.
+#[test]
+fn test_core_ml_failure_switches_to_tract_for_the_rest_of_the_run() {
+    let calls = Rc::new(Cell::new(0));
+    let failures = calls.clone();
+    let mut backend = backend();
+    backend.net = Some(LandmarkEngine::Fake(Box::new(move |_| {
+        failures.set(failures.get() + 1);
+        Err("prediction failed".into())
+    })));
+    let obs = run(&mut backend, &frontal(), 1.0, 3);
+    assert!(obs.usable());
+    assert_eq!(calls.get(), 1);
+    assert!(matches!(backend.net, Some(LandmarkEngine::Tract(_))));
+}
+
+/// Cartoon faces cropped like the backend crops them, at different places and sizes in the
+/// crop; the network reads each one confidently.
+#[cfg(target_os = "macos")]
+fn face_crops() -> Vec<Tensor> {
+    [
+        (320, 240, 1.0, 0.0, 0.0),
+        (300, 250, 0.85, 6.0, -4.0),
+        (340, 230, 1.2, -10.0, 6.0),
+    ]
+    .iter()
+    .map(|&(cx, cy, scale, dx, dy)| {
+        let frame = draw_face(
+            None,
+            &FaceParams {
+                cx,
+                cy,
+                scale,
+                ..FaceParams::default()
+            },
+        );
+        let roi = Roi::new(f64::from(cx) + dx, f64::from(cy) + dy, 330.0 * scale, 0.0);
+        input_tensor(&warp_affine(&frame, &roi.transform(), INPUT_SIZE))
+    })
+    .collect()
+}
+
+/// Gradient inputs like the self-test's, in other directions.
+#[cfg(target_os = "macos")]
+fn gradients() -> Vec<Tensor> {
+    let ramp = |i: usize| i as f32 / (INPUT_SIZE - 1) as f32;
+    let diagonal =
+        tract_ndarray::Array4::from_shape_fn((1, INPUT_SIZE, INPUT_SIZE, 3), |(_, y, x, _)| {
+            (ramp(x) + ramp(y)) / 2.0
+        });
+    let reversed =
+        tract_ndarray::Array4::from_shape_fn((1, INPUT_SIZE, INPUT_SIZE, 3), |(_, y, x, c)| {
+            [1.0 - ramp(x), ramp(y), 1.0 - ramp(y)][c]
+        });
+    vec![diagonal.into(), reversed.into()]
+}
+
+#[cfg(target_os = "macos")]
+fn core_ml_engine(dir: &std::path::Path) -> LandmarkEngine {
+    LandmarkEngine::CoreMl(super::super::facemesh_coreml::CoreMlNet::load(dir).unwrap())
+}
+
+/// The embedded package compiles into the cache, passes the self-test with tract's
+/// tolerances, and is reused (or compiled again when the cached copy is broken) on later loads.
+#[cfg(target_os = "macos")]
+#[test]
+fn test_core_ml_engine_compiles_and_passes_the_self_test() {
+    let dir = tempfile::tempdir().unwrap();
+    check_landmark_net(&core_ml_engine(dir.path())).unwrap();
+    let cached: Vec<_> = std::fs::read_dir(dir.path().join("coreml"))
+        .unwrap()
+        .collect();
+    assert_eq!(cached.len(), 1);
+    let model_dir = cached[0].as_ref().unwrap().path();
+    assert!(
+        model_dir
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("FaceLandmarks-")
+    );
+    let compiled = model_dir.join("FaceLandmarks.mlmodelc");
+    assert!(compiled.is_dir());
+
+    check_landmark_net(&core_ml_engine(dir.path())).unwrap();
+
+    std::fs::remove_dir_all(&compiled).unwrap();
+    std::fs::create_dir(&compiled).unwrap();
+    check_landmark_net(&core_ml_engine(dir.path())).unwrap();
+}
+
+/// Core ML computes in float16 on the Neural Engine: measured against tract, about 0.2 px on
+/// faces but up to about 10 px on inputs that are no face (gradients, the self-test blob), so
+/// only the faces are held to 2 px and a presence logit within 0.5; the others are printed.
+#[cfg(target_os = "macos")]
+#[test]
+fn test_core_ml_matches_tract() {
+    let dir = tempfile::tempdir().unwrap();
+    let (tract, core_ml) = (tract_engine(), core_ml_engine(dir.path()));
+    let faces = face_crops();
+    let others = std::iter::once(("self-test", self_test_blob()))
+        .chain(gradients().into_iter().map(|g| ("gradient", g)));
+    let inputs = faces.into_iter().map(|f| ("face", f)).chain(others);
+    for (i, (kind, input)) in inputs.enumerate() {
+        let (expected, expected_logit) = tract.forward(input.clone()).unwrap();
+        let (got, logit) = core_ml.forward(input).unwrap();
+        let errors: Vec<f64> = expected
+            .chunks(3)
+            .zip(got.chunks(3))
+            .map(|(e, g)| f64::from(e[0] - g[0]).hypot(f64::from(e[1] - g[1])))
+            .collect();
+        let max = errors.iter().fold(0.0f64, |m, &e| m.max(e));
+        let mean = errors.iter().sum::<f64>() / errors.len() as f64;
+        let logit_error = (expected_logit - logit).abs();
+        eprintln!(
+            "input {i} ({kind}): landmarks max {max:.2} px, mean {mean:.2} px; presence logit \
+             {expected_logit:.2} (tract) vs {logit:.2} (Core ML)"
+        );
+        if kind == "face" {
+            assert!(
+                f64::from(expected_logit) > CONFIDENT_LOGIT,
+                "{kind} {i} is no face"
+            );
+            assert!(max <= 2.0, "input {i}: {max:.2} px");
+            assert!(
+                logit_error <= 0.5,
+                "input {i}: logit off by {logit_error:.2}"
+            );
+        }
+    }
+}
+
+/// Prints the median time of a landmark inference with each engine (no assertion; run with
+/// `--release --ignored` for meaningful numbers).
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "timing only"]
+fn test_core_ml_and_tract_timing() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = face_crops().remove(0);
+    for (name, engine) in [
+        ("tract", tract_engine()),
+        ("Core ML", core_ml_engine(dir.path())),
+    ] {
+        engine.forward(input.clone()).unwrap(); // warm-up
+        let mut times: Vec<f64> = (0..100)
+            .map(|_| {
+                let input = input.clone();
+                let started = Instant::now();
+                engine.forward(input).unwrap();
+                started.elapsed().as_secs_f64() * 1000.0
+            })
+            .collect();
+        times.sort_by(f64::total_cmp);
+        eprintln!("{name}: p50 {:.2} ms over 100 inferences", times[50]);
+    }
 }
 
 // ------------------------------------------------------------- the backend
