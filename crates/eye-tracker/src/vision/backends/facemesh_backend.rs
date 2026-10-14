@@ -253,20 +253,26 @@ pub fn eye_metrics(points_px: &[[f64; 2]]) -> Option<EyeMetrics> {
     if points_px.len() < NUM_LANDMARKS {
         return None;
     }
+    eye_metrics_of([EYE_A, EYE_B].map(|eye| eye.map(|i| points_px[i])))
+}
+
+/// [`EyeMetrics`] from the five points of each eye in pixels, in the order of [`EYE_A`] and
+/// [`EYE_B`]: the image-left corner, the image-right corner, the iris centre, the upper lid and
+/// the lower lid. Returns `None` when an eye is degenerate (too small).
+pub fn eye_metrics_of(eyes: [[[f64; 2]; 5]; 2]) -> Option<EyeMetrics> {
     let (mut h, mut v, mut openness) = (0.0, 0.0, 0.0);
-    for [c0, c1, iris, lid_top, lid_bottom] in [EYE_A, EYE_B] {
-        let a = points_px[c0];
-        let axis = sub(points_px[c1], a);
+    for [a, c1, iris, lid_top, lid_bottom] in eyes {
+        let axis = sub(c1, a);
         let width = axis[0].hypot(axis[1]);
         if width.is_nan() || width < MIN_EYE_WIDTH_PX {
             return None;
         }
         let u = [axis[0] / width, axis[1] / width];
         let normal = [-u[1], u[0]]; // image-down for an upright face
-        let rel = sub(points_px[iris], a);
+        let rel = sub(iris, a);
         h += dot(rel, u) / width;
         v += dot(rel, normal) / width;
-        let lid = sub(points_px[lid_top], points_px[lid_bottom]);
+        let lid = sub(lid_top, lid_bottom);
         openness += lid[0].hypot(lid[1]) / width;
     }
     Some(EyeMetrics {

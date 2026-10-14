@@ -62,7 +62,7 @@ fn autostart_note(status: &str) -> String {
 }
 
 /// Vision backends offered in the settings (`general.backend` values), best first.
-pub const BACKEND_LABELS: [(&str, &str); 3] = [
+pub const BACKEND_LABELS: &[(&str, &str)] = &[
     ("auto", "Automatic (recommended)"),
     (
         "facemesh",
@@ -71,6 +71,11 @@ pub const BACKEND_LABELS: [(&str, &str); 3] = [
     (
         "lite",
         "Lite — head pose from face geometry only (lightest)",
+    ),
+    #[cfg(target_os = "macos")]
+    (
+        "apple",
+        "Apple Vision — head pose + pupils with Apple's face models",
     ),
 ];
 

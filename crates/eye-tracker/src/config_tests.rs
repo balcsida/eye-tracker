@@ -435,7 +435,7 @@ fn test_describe_settings_lists_every_setting_in_file_order() {
     let rows = describe_settings();
     assert_eq!(rows[0].key, "general.backend");
     assert_eq!(rows[0].kind, "str");
-    assert_eq!(rows[0].choices, ["auto", "facemesh", "lite"]);
+    assert_eq!(rows[0].choices, ["auto", "facemesh", "lite", "apple"]);
     let width = row("camera.width");
     assert_eq!(
         (width.kind, width.lo, width.hi, width.default.clone()),

@@ -2,10 +2,13 @@
 //!
 //! `facemesh` (478 landmarks with irises: head pose + eye direction) is preferred; `lite`
 //! (YuNet's five landmarks: head pose only, lowest CPU) is the fallback. Both run in-process with
-//! tract (the TFLite landmark network and the ONNX YuNet detector); no other inference runtime is
-//! used, and nothing touches the network. The model files are embedded in the binary; nothing is
-//! downloaded at run time.
+//! tract (the TFLite landmark network and the ONNX YuNet detector), and nothing touches the
+//! network. The model files are embedded in the binary; nothing is downloaded at run time. On
+//! macOS, `apple` (only when chosen) runs Apple's Vision framework instead: its own face models,
+//! head pose and pupils, no model files.
 
+#[cfg(target_os = "macos")]
+pub mod apple_backend;
 pub mod base;
 pub mod face_geometry;
 pub mod facemesh_backend;
@@ -14,12 +17,17 @@ pub mod overlay;
 pub mod pnp;
 pub mod yunet;
 
+#[cfg(target_os = "macos")]
+pub use apple_backend::AppleBackend;
 pub use base::{BackendUnavailable, VisionBackend};
 pub use facemesh_backend::FaceMeshBackend;
 pub use lite_backend::LiteBackend;
 
-/// Backend names in order of preference.
-pub const BACKEND_NAMES: [&str; 2] = ["facemesh", "lite"];
+/// Backend names in order of preference (the order `"auto"` tries them in).
+#[cfg(not(target_os = "macos"))]
+pub const BACKEND_NAMES: &[&str] = &["facemesh", "lite"];
+#[cfg(target_os = "macos")]
+pub const BACKEND_NAMES: &[&str] = &["facemesh", "lite", "apple"];
 
 /// Every bundled model file and its pinned SHA-256 (see `models/NOTICE.md` for provenance;
 /// `cargo xtask fetch-models` pins the same values).
@@ -39,7 +47,7 @@ pub const MODEL_FILES: [(&str, &str); 3] = [
 ];
 
 /// The model files each backend needs.
-pub const BACKEND_MODEL_FILES: [(&str, &[&str]); 2] = [
+pub const BACKEND_MODEL_FILES: &[(&str, &[&str])] = &[
     (
         "facemesh",
         &[
@@ -49,6 +57,8 @@ pub const BACKEND_MODEL_FILES: [(&str, &[&str]); 2] = [
         ],
     ),
     ("lite", &["face_detection_yunet_2023mar.onnx"]),
+    #[cfg(target_os = "macos")]
+    ("apple", &[]),
 ];
 
 // Names used by Eye Tracker 0.1 settings files and scripts.
@@ -85,6 +95,8 @@ pub fn model_bytes(name: &str) -> Option<&'static [u8]> {
 pub enum BackendClass {
     FaceMesh,
     Lite,
+    #[cfg(target_os = "macos")]
+    Apple,
 }
 
 impl BackendClass {
@@ -92,6 +104,8 @@ impl BackendClass {
         match self {
             Self::FaceMesh => FaceMeshBackend::NAME,
             Self::Lite => LiteBackend::NAME,
+            #[cfg(target_os = "macos")]
+            Self::Apple => AppleBackend::NAME,
         }
     }
 
@@ -99,6 +113,8 @@ impl BackendClass {
         match self {
             Self::FaceMesh => FaceMeshBackend::FEATURE_NAMES,
             Self::Lite => LiteBackend::FEATURE_NAMES,
+            #[cfg(target_os = "macos")]
+            Self::Apple => AppleBackend::FEATURE_NAMES,
         }
     }
 
@@ -106,6 +122,8 @@ impl BackendClass {
         match self {
             Self::FaceMesh => FaceMeshBackend::FEATURE_VERSION,
             Self::Lite => LiteBackend::FEATURE_VERSION,
+            #[cfg(target_os = "macos")]
+            Self::Apple => AppleBackend::FEATURE_VERSION,
         }
     }
 
@@ -113,6 +131,8 @@ impl BackendClass {
         match self {
             Self::FaceMesh => FaceMeshBackend::GAZE_FEATURES,
             Self::Lite => LiteBackend::GAZE_FEATURES,
+            #[cfg(target_os = "macos")]
+            Self::Apple => AppleBackend::GAZE_FEATURES,
         }
     }
 }
@@ -120,7 +140,7 @@ impl BackendClass {
 /// Names of the backends whose model files are present.
 ///
 /// This is a cheap check; a backend listed here can still fail to load (for example a corrupt
-/// model), which [`create_backend`] reports. With the models embedded, both are always listed.
+/// model), which [`create_backend`] reports. With the models embedded, all are always listed.
 pub fn available_backends() -> Vec<&'static str> {
     available_among(|file| model_bytes(file).is_some_and(|bytes| !bytes.is_empty()))
 }
@@ -156,8 +176,8 @@ fn class_among(name: &str, available: &[&str]) -> Result<BackendClass, BackendUn
 
 /// Create a vision backend.
 ///
-/// `"auto"` tries `facemesh` first and falls back to `lite`. Call this on the thread that will
-/// use the backend.
+/// `"auto"` tries `facemesh` first and falls back to `lite` (and on macOS then to `apple`). Call
+/// this on the thread that will use the backend.
 ///
 /// Fails with [`BackendUnavailable`] when the requested backend (or, for `"auto"`, every backend)
 /// cannot be created. The message says why.
@@ -178,7 +198,7 @@ fn create_with(
         return create(key, max_faces);
     }
     let mut reasons = Vec::new();
-    for candidate in BACKEND_NAMES {
+    for &candidate in BACKEND_NAMES {
         match create(candidate, max_faces) {
             Ok(backend) => {
                 log::info!("Using the {} vision backend", backend.name());
@@ -205,11 +225,18 @@ fn normalise(name: &str) -> Result<&'static str, BackendUnavailable> {
     if key == "auto" {
         return Ok("auto");
     }
+    #[cfg(not(target_os = "macos"))]
+    if key == "apple" {
+        return Err(BackendUnavailable(
+            "The apple vision backend needs macOS".into(),
+        ));
+    }
     BACKEND_NAMES
-        .into_iter()
+        .iter()
+        .copied()
         .find(|&n| n == key)
         .ok_or_else(|| {
-            let choices = ["auto"].iter().chain(&BACKEND_NAMES).copied();
+            let choices = ["auto"].iter().chain(BACKEND_NAMES).copied();
             BackendUnavailable(format!(
                 "Unknown vision backend {name:?}; choose one of {}",
                 choices.collect::<Vec<_>>().join(", ")
@@ -218,18 +245,21 @@ fn normalise(name: &str) -> Result<&'static str, BackendUnavailable> {
 }
 
 fn class(name: &str) -> BackendClass {
-    if name == "facemesh" {
-        BackendClass::FaceMesh
-    } else {
-        BackendClass::Lite
+    match name {
+        "facemesh" => BackendClass::FaceMesh,
+        #[cfg(target_os = "macos")]
+        "apple" => BackendClass::Apple,
+        _ => BackendClass::Lite,
     }
 }
 
 fn create(name: &str, max_faces: usize) -> Result<Box<dyn VisionBackend>, BackendUnavailable> {
-    if name == "facemesh" {
-        return Ok(Box::new(FaceMeshBackend::new(max_faces)?));
+    match name {
+        "facemesh" => Ok(Box::new(FaceMeshBackend::new(max_faces)?)),
+        #[cfg(target_os = "macos")]
+        "apple" => Ok(Box::new(AppleBackend::new(max_faces)?)),
+        _ => Ok(Box::new(LiteBackend::new(max_faces)?)),
     }
-    Ok(Box::new(LiteBackend::new(max_faces)?))
 }
 
 fn nothing_available_message() -> String {

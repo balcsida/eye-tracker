@@ -931,9 +931,18 @@ fn test_backend_choices_are_the_opencv_backends() {
     let e = env();
     let items = e.dialog.items("general.backend");
     let values: Vec<&str> = items.iter().map(|(v, _)| v.as_str()).collect();
+    #[cfg(not(target_os = "macos"))]
     assert_eq!(values, ["auto", "facemesh", "lite"]);
+    #[cfg(target_os = "macos")]
+    assert_eq!(values, ["auto", "facemesh", "lite", "apple"]);
     assert!(items[1].1.starts_with("Face mesh"));
     assert!(items[2].1.starts_with("Lite"));
+    // Available, so not marked otherwise.
+    assert!(
+        items
+            .iter()
+            .all(|(_, label)| !label.contains("not available"))
+    );
     let labels: Vec<&str> = items.iter().map(|(_, l)| l.as_str()).collect();
     let labels = labels.join(" ");
     assert!(!labels.contains("MediaPipe"));

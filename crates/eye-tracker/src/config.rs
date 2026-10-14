@@ -345,10 +345,11 @@ macro_rules! settings {
 settings! { platform;
     general: GeneralSettings {
         backend: String = "auto".into() => {
-            choices = &["auto", "facemesh", "lite"],
+            choices = &["auto", "facemesh", "lite", "apple"],
             doc = "Vision backend. 'facemesh' tracks 478 face landmarks including the irises \
                 (head pose + eye direction); 'lite' uses 5 landmarks (head pose only, lowest \
-                CPU). 'auto' picks facemesh."
+                CPU); 'apple' (macOS only) uses Apple's Vision framework for head pose and \
+                pupils, on the Neural Engine where available. 'auto' picks facemesh."
         },
         start_paused: bool = false => { doc = "Start with tracking paused." },
         first_run_done: bool = false => {

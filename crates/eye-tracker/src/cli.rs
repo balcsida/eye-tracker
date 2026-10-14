@@ -34,7 +34,8 @@ pub const EXIT_INTERRUPTED: i32 = 130;
 /// executable for both roles.
 pub const FROZEN_CLI_NAME: &str = "eye-tracker-cli";
 
-pub const BACKEND_CHOICES: [&str; 3] = ["auto", "facemesh", "lite"];
+/// `apple` is accepted everywhere (settings files travel between machines) and works on macOS.
+pub const BACKEND_CHOICES: [&str; 4] = ["auto", "facemesh", "lite", "apple"];
 /// Backend names of Eye Tracker 0.1, still accepted (e.g. in desktop shortcuts).
 pub const LEGACY_BACKENDS: [(&str, &str); 2] = [("mediapipe", "facemesh"), ("opencv", "lite")];
 /// Mirrors `ipc::COMMANDS`.
@@ -149,12 +150,12 @@ struct GlobalOptions {
         help_heading = "global options"
     )]
     camera: Option<String>,
-    /// vision backend: facemesh (head and eyes), lite (head only, lightest) or auto; overrides
-    /// the settings
+    /// vision backend: facemesh (head and eyes), lite (head only, lightest), apple (macOS:
+    /// Apple's Vision framework, head and eyes) or auto; overrides the settings
     #[arg(
         long,
         global = true,
-        value_name = "{auto,facemesh,lite}",
+        value_name = "{auto,facemesh,lite,apple}",
         value_parser = backend_option,
         hide_possible_values = true,
         help_heading = "global options"

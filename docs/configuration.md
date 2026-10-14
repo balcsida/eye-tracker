@@ -21,7 +21,7 @@ still at an earlier version's defaults move to today's defaults once; hotkeys yo
 
 | Key | Default | Allowed | Description |
 |---|---|---|---|
-| `general.backend` | `auto` | `auto` · `facemesh` · `lite` | Vision backend. 'facemesh' tracks 478 face landmarks including the irises (head pose + eye direction); 'lite' uses 5 landmarks (head pose only, lowest CPU). 'auto' picks facemesh. |
+| `general.backend` | `auto` | `auto` · `facemesh` · `lite` · `apple` | Vision backend. 'facemesh' tracks 478 face landmarks including the irises (head pose + eye direction); 'lite' uses 5 landmarks (head pose only, lowest CPU); 'apple' (macOS only) uses Apple's Vision framework for head pose and pupils, on the Neural Engine where available. 'auto' picks facemesh. |
 | `general.start_paused` | `false` |  | Start with tracking paused. |
 | `general.first_run_done` | `false` |  | Set after the first-run wizard completes. Until then a walk-away action that locks or turns the displays off only shows a notification. |
 | `general.notifications` | `true` |  | Show tray notifications. |

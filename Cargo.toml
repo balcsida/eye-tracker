@@ -112,6 +112,27 @@ objc2-foundation = "0.3.2"
 objc2-app-kit = "0.3.2"
 objc2-core-graphics = "0.3.2"
 objc2-application-services = "0.3.2"
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFCGTypes", "CFData"] }
+# The apple backend: Vision's face rectangles and landmarks, and Core ML's compute devices.
+objc2-vision = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "objc2-core-foundation",
+  "objc2-core-graphics",
+  "objc2-core-ml",
+  "VNDetectFaceLandmarksRequest",
+  "VNDetectFaceRectanglesRequest",
+  "VNFaceLandmarks",
+  "VNFaceObservationAccepting",
+  "VNObservation",
+  "VNRequest",
+  "VNRequestHandler",
+  "VNTypes",
+] }
+objc2-core-ml = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "MLComputeDeviceProtocol",
+  "MLNeuralEngineComputeDevice",
+] }
 core-foundation = "0.10.1"
 x11rb = { version = "0.14.0", features = ["xtest", "xkb", "randr", "dpms", "screensaver"] }
 zbus = "5.19.0"

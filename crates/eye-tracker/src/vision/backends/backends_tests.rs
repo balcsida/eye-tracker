@@ -68,6 +68,16 @@ fn each_backend(test: impl Fn(&mut dyn VisionBackend)) {
     }
 }
 
+/// [`each_backend`] without the apple backend: Vision is trained on photos and reads the drawn
+/// faces only at some sizes (`apple_backend_tests.rs` uses one it reads).
+fn each_backend_on_drawn_faces(test: impl Fn(&mut dyn VisionBackend)) {
+    each_backend(|backend| {
+        if backend.name() != "apple" {
+            test(backend);
+        }
+    });
+}
+
 /// Process a frame a few times (trackers settle) and return the last result.
 fn run(backend: &mut dyn VisionBackend, frame: &Frame, start: f64, n: usize) -> Observation {
     let mut obs = None;
@@ -86,16 +96,20 @@ fn face_params(cx: i32) -> FaceParams {
 
 // ------------------------------------------------------------------ selection
 #[test]
-fn test_both_backends_are_available_with_the_committed_models() {
-    assert_eq!(available_backends(), ["facemesh", "lite"]);
+fn test_every_backend_is_available_with_the_committed_models() {
+    assert_eq!(available_backends(), BACKEND_NAMES);
 }
 
 #[test]
 fn test_available_backends_order() {
+    #[cfg(not(target_os = "macos"))]
     assert_eq!(BACKEND_NAMES, ["facemesh", "lite"]);
+    #[cfg(target_os = "macos")]
+    assert_eq!(BACKEND_NAMES, ["facemesh", "lite", "apple"]);
     let available = available_backends();
     let ordered: Vec<&str> = BACKEND_NAMES
-        .into_iter()
+        .iter()
+        .copied()
         .filter(|n| available.contains(n))
         .collect();
     assert_eq!(ordered, available);
@@ -103,13 +117,18 @@ fn test_available_backends_order() {
 
 #[test]
 fn test_available_backends_needs_every_model() {
-    let none = available_among(|_| false);
-    assert!(none.is_empty());
-    let err = class_among("auto", &none).unwrap_err();
+    // The apple backend needs no model files.
+    let model_free: Vec<&str> = BACKEND_NAMES
+        .iter()
+        .copied()
+        .filter(|&n| n == "apple")
+        .collect();
+    assert_eq!(available_among(|_| false), model_free);
+    let err = class_among("auto", &[]).unwrap_err();
     assert!(err.0.contains("No vision backend"), "{err}");
     // Only YuNet present: the lite backend is available, facemesh is not.
     let lite_only = available_among(|file| file == "face_detection_yunet_2023mar.onnx");
-    assert_eq!(lite_only, ["lite"]);
+    assert_eq!(lite_only, [&["lite"][..], &model_free].concat());
     assert_eq!(class_among("auto", &lite_only).unwrap(), BackendClass::Lite);
 }
 
@@ -119,6 +138,13 @@ fn test_unknown_backend_raises() {
     assert!(err.0.contains("Unknown vision backend"), "{err}");
     let err = backend_class("tensorflow").unwrap_err();
     assert!(err.0.contains("auto, facemesh, lite"), "{err}");
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn test_apple_needs_macos() {
+    let err = create_backend("apple", 1).err().unwrap();
+    assert!(err.0.contains("needs macOS"), "{err}");
 }
 
 #[test]
@@ -217,7 +243,14 @@ fn test_backend_metadata() {
         ["nose_dx", "nose_dy", "roll", "face_cx", "face_cy", "scale"]
     );
     assert_eq!(LiteBackend::GAZE_FEATURES, ["nose_dx", "nose_dy"]);
-    for class in [BackendClass::FaceMesh, BackendClass::Lite] {
+    let classes = [
+        BackendClass::FaceMesh,
+        BackendClass::Lite,
+        #[cfg(target_os = "macos")]
+        BackendClass::Apple,
+    ];
+    for class in classes {
+        assert_eq!(backend_class(class.name()).unwrap(), class);
         for name in class.gaze_features() {
             assert!(class.feature_names().contains(name));
         }
@@ -367,7 +400,7 @@ fn test_close_is_idempotent_and_final() {
 /// The worker calls reset() when the camera was released and asks `settled`.
 #[test]
 fn test_reset_starts_afresh_and_a_still_face_is_settled() {
-    each_backend(|backend| {
+    each_backend_on_drawn_faces(|backend| {
         let frame = draw_face(None, &FaceParams::default());
         assert!(run(backend, &frame, 1.0, 3).usable());
         assert!(backend.settled()); // a still face: the motion gate may repeat it
@@ -383,7 +416,7 @@ fn test_reset_starts_afresh_and_a_still_face_is_settled() {
 // --------------------------------------------------------------- drawn faces
 #[test]
 fn test_drawn_face_is_found() {
-    each_backend(|backend| {
+    each_backend_on_drawn_faces(|backend| {
         let frame = draw_face(None, &FaceParams::default());
         let obs = run(backend, &frame, 1.0, 3);
         assert_eq!(obs.face_count, 1);
@@ -404,7 +437,7 @@ fn test_drawn_face_is_found() {
 
 #[test]
 fn test_drawn_face_annotation() {
-    each_backend(|backend| {
+    each_backend_on_drawn_faces(|backend| {
         let frame = draw_face(None, &FaceParams::default());
         let obs = run(backend, &frame, 1.0, 3);
         let out = backend.annotate(&frame, &obs);
@@ -425,7 +458,7 @@ fn test_drawn_face_annotation() {
 /// A face on the image left is turned towards image-right (it faces the lens).
 #[test]
 fn test_head_turn_signs() {
-    each_backend(|backend| {
+    each_backend_on_drawn_faces(|backend| {
         let left = run(backend, &draw_face(None, &face_params(200)), 1.0, 3);
         let right = run(backend, &draw_face(None, &face_params(440)), 10.0, 3);
         let (left, right) = (left.head_yaw.unwrap(), right.head_yaw.unwrap());
@@ -438,7 +471,7 @@ fn test_head_turn_signs() {
 
 #[test]
 fn test_two_faces_are_counted() {
-    each_backend(|backend| {
+    each_backend_on_drawn_faces(|backend| {
         let canvas = two_faces(0.22);
         backend.set_max_faces(2);
         let obs = run(backend, &canvas, 1.0, 3);

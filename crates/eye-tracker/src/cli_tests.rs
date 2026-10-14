@@ -1086,11 +1086,12 @@ fn test_autostart_status_explains_entries_for_other_copies() {
 
 #[test]
 fn test_backend_option_takes_current_and_legacy_names() {
-    assert_eq!(BACKEND_CHOICES, ["auto", "facemesh", "lite"]);
+    assert_eq!(BACKEND_CHOICES, ["auto", "facemesh", "lite", "apple"]);
     let fixture = Fixture::new();
     for (given, expected) in [
         ("facemesh", "facemesh"),
         ("LITE", "lite"),
+        ("apple", "apple"),
         ("mediapipe", "facemesh"), // Eye Tracker 0.1 names in old shortcuts
         ("opencv", "lite"),
     ] {
