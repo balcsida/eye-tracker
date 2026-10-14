@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- macOS: the `apple` vision backend (`--backend apple`, `general.backend = "apple"`) uses Apple's
+  Vision framework for head pose and pupils, on the Neural Engine where available.
+
 ### Changed
 
 - **Eye Tracker is rewritten in Rust.** The features, settings, hotkeys, command line, and the

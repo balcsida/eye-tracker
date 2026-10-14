@@ -10,7 +10,7 @@ is.
 flowchart LR
     CAM[Webcam] -->|BGR frame| GATE{Motion gate}
     subgraph W["Vision worker thread"]
-        GATE -->|changed| BK[Face backend<br/>facemesh or lite]
+        GATE -->|changed| BK[Face backend<br/>facemesh, lite or apple]
         GATE -->|unchanged| COPY[Reuse last result]
     end
     BK --> OBS[Observation<br/>features, face count, blink, blind]
@@ -55,6 +55,13 @@ flowchart LR
      roll, head position, and the iris position inside each eye.
    - **lite** uses only YuNet's five landmarks (eyes, nose, mouth corners): head orientation
      without eye direction, for the lowest CPU use.
+   - **apple** (macOS only; `auto` tries it only after facemesh and lite failed;
+     `vision/backends/apple_backend.rs`) hands the frame to Apple's Vision framework as an
+     in-memory `CGImage`: face rectangles with roll, yaw and pitch (revision 3), then the 76-point
+     landmarks of the primary face, on the Neural Engine when Vision offers it (macOS 14+). The
+     iris features come from the eye contours and pupils with the facemesh backend's formula, so
+     the gaze model sees the same four gaze features. No model files; calibrations get their own
+     profile (feature version `vision-pose-pupil-1`).
 
    The MediaPipe *runtime* is intentionally not used. Its native library contains a usage-logging
    uploader, and this app never touches the network (see [privacy.md](privacy.md)).
