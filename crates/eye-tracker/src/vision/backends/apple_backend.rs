@@ -608,3 +608,7 @@ fn region_points(region: &VNFaceLandmarkRegion2D) -> Vec<[f64; 2]> {
             .collect()
     }
 }
+
+#[cfg(test)]
+#[path = "apple_backend_tests.rs"]
+mod tests;
