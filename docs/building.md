@@ -152,6 +152,24 @@ The licence texts are never downloaded: `cargo xtask fetch-models --check` fails
 missing or altered (restore it from git). The program embeds the model files with `include_bytes!`,
 so a build fails when one is missing.
 
+### The Core ML package (macOS)
+
+`models/FaceLandmarks.mlpackage` is `face_landmarks_detector.tflite` converted for Core ML, which
+the facemesh backend runs on macOS (see [architecture](architecture.md)). It is committed, so a
+build needs neither Python nor Xcode. Rerun the conversion only when `face_landmarks_detector.tflite`
+or the conversion itself changes; the app compiles the new package on its next start. The tool
+lives in [`tools/coreml/`](../tools/coreml/) with pinned versions (Python 3.12, macOS):
+
+```bash
+python3.12 -m venv /tmp/coreml-venv
+/tmp/coreml-venv/bin/pip install -r tools/coreml/requirements.txt
+/tmp/coreml-venv/bin/python tools/coreml/convert.py   # rewrites crates/eye-tracker/models/FaceLandmarks.mlpackage
+/tmp/coreml-venv/bin/python tools/coreml/check.py     # parity with TFLite, compute plan, timing
+```
+
+`check.py` also needs `xcrun coremlcompiler` (the Xcode command line tools) for the compute plan.
+Then run `cargo test`: the facemesh tests check the package against tract.
+
 ## Continuous integration
 
 - [`ci.yml`](../.github/workflows/ci.yml) runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, the privacy

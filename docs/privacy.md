@@ -132,6 +132,7 @@ file inputs, and Eye Tracker refuses URLs and protocol prefixes for every frame 
 | `settings.json` | Your preferences | Windows `%LOCALAPPDATA%\bugraskl\eye-tracker\`, macOS `~/Library/Application Support/eye-tracker/`, Linux `~/.config/eye-tracker/` |
 | `calibration.json` | Calibration profiles: numeric feature vectors, target points, the fitted model, and learned samples from mouse use | Windows `%LOCALAPPDATA%\bugraskl\eye-tracker\`, macOS `~/Library/Application Support/eye-tracker/`, Linux `~/.local/share/eye-tracker/` |
 | `state.json` | Whether privacy mode is on, so that it stays on after a restart | Next to `calibration.json` |
+| `coreml/FaceLandmarks-…/` | macOS only: the embedded face landmark model as a Core ML package and its compiled copy, written at the first start so Core ML can load it. Model data, no personal data | Next to `calibration.json` |
 | `eye-tracker.log` | Events such as "switched to monitor 2" or "camera opened". No window titles, no key contents, no images. Rotated at 1 MB, keeping three older files with a timestamp in the name (`eye-tracker.log` is always the current one). | The platform log directory; `eye-tracker doctor` prints the exact paths |
 
 The Windows portable ZIP uses the same folders. Started with `--config-dir DIR`, Eye Tracker keeps

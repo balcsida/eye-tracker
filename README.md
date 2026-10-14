@@ -124,8 +124,9 @@ flowchart LR
 - **Vision.** MediaPipe's face-landmark network and the YuNet face detector run on
   [tract](https://github.com/sonos/tract), a pure-Rust inference engine, inside the program; there
   is no OpenCV. The MediaPipe runtime is not used, because it contains a telemetry uploader
-  ([why](docs/privacy.md#why-not-the-mediapipe-runtime)). On macOS the `apple` backend
-  (`--backend apple`) uses Apple's Vision framework instead: Apple's own face models, on the
+  ([why](docs/privacy.md#why-not-the-mediapipe-runtime)). On macOS the landmark network runs
+  through Core ML instead, on the Neural Engine where available. The `apple` backend
+  (`--backend apple`) uses Apple's Vision framework altogether: Apple's own face models, on the
   Neural Engine where available, and no model files. The windows are drawn with
   [egui](https://github.com/emilk/egui), not Qt.
 - **Personal model.** Calibration fits a small regression from your head angles and iris positions

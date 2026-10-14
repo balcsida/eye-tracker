@@ -10,6 +10,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - macOS: the `apple` vision backend (`--backend apple`, `general.backend = "apple"`) uses Apple's
   Vision framework for head pose and pupils, on the Neural Engine where available.
+- macOS: the facemesh backend runs its landmark model through Core ML, on the Neural Engine where
+  available, instead of tract on the CPU (`general.coreml`, on by default).
 
 ### Changed
 

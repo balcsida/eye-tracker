@@ -43,7 +43,8 @@ flowchart LR
    room) so they are treated as "cannot tell" rather than "nobody here".
 3. **Face backend.** `vision/backends/`:
    - **facemesh** (default) runs MediaPipe's face-landmark network (478 points including both
-     irises) with [tract](https://github.com/sonos/tract) (a pure-Rust inference engine) and fits the
+     irises) with [tract](https://github.com/sonos/tract) (a pure-Rust inference engine), or on
+     macOS with Core ML (see [Inference engines](#inference-engines)), and fits the
      canonical face mesh with a Levenberg-Marquardt PnP solver (`vision/backends/pnp.rs`) for head
      pose. It tracks the face region from frame to frame. After a posture shift it runs the network
      again on the region the landmarks ask for (two to four inferences for that one frame), so the
@@ -84,6 +85,26 @@ flowchart LR
 7. **Action.** The controller remembers the cursor position and focused window of the monitor being
    left, warps the cursor to the target monitor and gives keyboard focus to the last window used
    there. No synthetic clicks are ever sent.
+
+## Inference engines
+
+YuNet and, everywhere but macOS, the landmark network run on tract, on the CPU. On macOS the
+facemesh backend runs the landmark network through Core ML instead (`general.coreml`, on by
+default), on the Neural Engine where the Mac has one: well under a millisecond per inference
+instead of about 13 ms of CPU. `vision/backends/facemesh_coreml.rs` embeds
+`models/FaceLandmarks.mlpackage`, the same network converted by `tools/coreml/convert.py`, which
+takes the very crop buffer tract gets. At its first start the app writes the package to
+`<data dir>/coreml/FaceLandmarks-<hash>/` (on macOS `~/Library/Application Support/eye-tracker/`,
+or `data/` below `--config-dir`), has Core ML compile it there in-process, and keeps the compiled
+`FaceLandmarks.mlmodelc` next to it, so later starts only load it. The hash is the package's, so
+a new model is compiled again; a cached copy that does not load is compiled again too.
+
+The engine is chosen when the backend is created (`LandmarkEngine` in
+`facemesh_backend.rs`): Core ML only if it loads and passes the same self-test as tract, tract
+otherwise, and the log says which. A Core ML error later hands the network to tract for the rest
+of the run. Core ML computes in float16: on faces its landmarks are within about 0.2 px of
+tract's, on inputs that are no face (gradients) up to about 10 px; the score threshold, landmark
+mapping and features are the same, so calibrations stay valid.
 
 ## The switching rules
 
@@ -212,7 +233,7 @@ crates/eye-tracker/src/
   paths.rs            config, data and log directories
   logging_setup.rs    the rotating log file
   trace.rs            the optional numeric trace
-  vision/             camera, motion gate, worker thread, face backends (and the models' loaders)
+  vision/             camera, motion gate, worker thread, face backends (and the models' loaders and engines)
   gaze/               gaze model, filters, calibration, calibration store, implicit learning
   engine/             decision, reading rule, presence, guard, scheduler, input tracking, controller
   panes/              split-pane focus (experimental): providers, worker thread, decision
@@ -225,6 +246,7 @@ crates/eye-tracker/src/
   testing/            shared test helpers (compiled for tests only)
   bin/                the console binary `eye-tracker` and the windowed `eye-tracker-gui`
 crates/eye-tracker/models/   the model files (embedded with include_bytes!), NOTICE.md, licenses/
+tools/coreml/                the Core ML conversion of the landmark model (Python, run by hand)
 crates/xtask/                `cargo xtask`: developer tools (privacy gate, models, icons, docs, site)
 ```
 
