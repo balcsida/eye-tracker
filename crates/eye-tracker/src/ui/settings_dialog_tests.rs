@@ -1192,3 +1192,9 @@ fn test_rich_text_keeps_the_words_and_drops_the_markup() {
         assert_eq!(job.text, "Bold & a <b>\nend");
     });
 }
+
+#[test]
+fn test_settings_window_is_opaque() {
+    // Left unset, glow makes it as transparent as the root: no title bar background on macOS.
+    assert_eq!(SettingsDialog::viewport_builder().transparent, Some(false));
+}

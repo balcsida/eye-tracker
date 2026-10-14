@@ -212,11 +212,13 @@ impl AboutDialog {
         ViewportId::from_hash_of("about")
     }
 
-    /// The window: titled, with the app icon.
+    /// The window: titled, opaque, with the app icon.
     pub fn viewport_builder() -> egui::ViewportBuilder {
         let builder = egui::ViewportBuilder::default()
             .with_title(format!("About {APP_NAME}"))
-            .with_inner_size([560.0, 600.0]);
+            .with_inner_size([560.0, 600.0])
+            // Under glow a child viewport left unset inherits the transparent root's flag.
+            .with_transparent(false);
         match icons::app_icon().best(256) {
             Some(image) => builder.with_icon(image.to_icon_data()),
             None => builder,

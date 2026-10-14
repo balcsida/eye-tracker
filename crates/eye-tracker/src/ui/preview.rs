@@ -324,13 +324,15 @@ impl PreviewWindow {
         ViewportId::from_hash_of("camera-preview")
     }
 
-    /// The window: titled, resizable, with the app icon.
+    /// The window: titled, resizable, opaque, with the app icon.
     pub fn viewport_builder() -> egui::ViewportBuilder {
         let icon = icons::app_icon();
         let builder = egui::ViewportBuilder::default()
             .with_title(format!("Camera preview — {APP_NAME}"))
             .with_inner_size([680.0, 660.0])
-            .with_min_inner_size([360.0, 480.0]);
+            .with_min_inner_size([360.0, 480.0])
+            // Under glow a child viewport left unset inherits the transparent root's flag.
+            .with_transparent(false);
         match icon.best(256) {
             Some(image) => builder.with_icon(image.to_icon_data()),
             None => builder,

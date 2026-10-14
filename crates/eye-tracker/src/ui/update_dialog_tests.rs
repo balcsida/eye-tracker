@@ -222,3 +222,9 @@ fn test_every_phase_draws_headless() {
         output.textures_delta.clear();
     }
 }
+
+#[test]
+fn test_update_window_is_opaque() {
+    // Left unset, glow makes it as transparent as the root: no title bar background on macOS.
+    assert_eq!(UpdateDialog::viewport_builder().transparent, Some(false));
+}

@@ -83,4 +83,6 @@ fn test_about_window_opens_draws_and_closes() {
         AboutDialog::viewport_builder().title.as_deref(),
         Some("About Eye Tracker")
     );
+    // Left unset, glow makes it as transparent as the root: no title bar background on macOS.
+    assert_eq!(AboutDialog::viewport_builder().transparent, Some(false));
 }

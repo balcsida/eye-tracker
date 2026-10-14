@@ -552,3 +552,9 @@ fn test_wizard_buttons_sit_below_the_page() {
         e.wizard.next();
     }
 }
+
+#[test]
+fn test_wizard_window_is_opaque() {
+    // Left unset, glow makes it as transparent as the root: no title bar background on macOS.
+    assert_eq!(FirstRunWizard::viewport_builder().transparent, Some(false));
+}

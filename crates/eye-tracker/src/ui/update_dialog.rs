@@ -215,22 +215,28 @@ impl UpdateDialog {
         }
     }
 
+    /// The window: titled, opaque, with the app icon.
+    pub fn viewport_builder() -> egui::ViewportBuilder {
+        icons::with_app_icon(
+            egui::ViewportBuilder::default()
+                .with_title(format!("{APP_NAME} updates"))
+                .with_inner_size([460.0, 200.0])
+                .with_min_inner_size([440.0, 160.0])
+                // Under glow a child viewport left unset inherits the transparent root's flag.
+                .with_transparent(false),
+        )
+    }
+
     /// Draw the window while it is shown; returns what it asks the service to do.
     pub fn show(&mut self, ctx: &egui::Context, inputs: &UpdateInputs<'_>) -> Vec<UpdateAction> {
         if !self.visible {
             return Vec::new();
         }
         let view = update_view(inputs.state, inputs.can_install);
-        let builder = icons::with_app_icon(
-            egui::ViewportBuilder::default()
-                .with_title(format!("{APP_NAME} updates"))
-                .with_inner_size([460.0, 200.0])
-                .with_min_inner_size([440.0, 160.0]),
-        );
         let mut chosen = None;
         ctx.show_viewport_immediate(
             egui::ViewportId::from_hash_of("eye-tracker-updates"),
-            builder,
+            Self::viewport_builder(),
             |ui, _class| {
                 if std::mem::take(&mut self.raise) {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);

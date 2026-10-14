@@ -790,18 +790,26 @@ impl FirstRunWizard {
         egui::ViewportId::from_hash_of("eye-tracker-setup")
     }
 
-    /// Draw the wizard in its own window; returns what it asks the controller to do.
-    pub fn show(&mut self, ctx: &egui::Context, inputs: &WizardInputs) -> Vec<WizardAction> {
-        self.poll_cameras();
-        let builder = icons::with_app_icon(
+    /// The window: titled, opaque, with the app icon.
+    pub fn viewport_builder() -> egui::ViewportBuilder {
+        icons::with_app_icon(
             egui::ViewportBuilder::default()
                 .with_title(format!("{APP_NAME} setup"))
                 .with_inner_size([680.0, 600.0])
-                .with_min_inner_size([640.0, 560.0]),
+                .with_min_inner_size([640.0, 560.0])
+                // Under glow a child viewport left unset inherits the transparent root's flag.
+                .with_transparent(false),
+        )
+    }
+
+    /// Draw the wizard in its own window; returns what it asks the controller to do.
+    pub fn show(&mut self, ctx: &egui::Context, inputs: &WizardInputs) -> Vec<WizardAction> {
+        self.poll_cameras();
+        ctx.show_viewport_immediate(
+            Self::viewport_id(),
+            Self::viewport_builder(),
+            |ui, _class| self.draw(ui, inputs.now),
         );
-        ctx.show_viewport_immediate(Self::viewport_id(), builder, |ui, _class| {
-            self.draw(ui, inputs.now)
-        });
         if matches!(self.current, PAGE_CAMERA | PAGE_PERMISSIONS) {
             // The status is refreshed twice a second.
             ctx.request_repaint_after(std::time::Duration::from_millis(500));

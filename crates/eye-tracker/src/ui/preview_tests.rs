@@ -203,3 +203,9 @@ fn test_preview_draws_a_viewport_while_open() {
     }
     assert!(window.image().is_some());
 }
+
+#[test]
+fn test_preview_window_is_opaque() {
+    // Left unset, glow makes it as transparent as the root: no title bar background on macOS.
+    assert_eq!(PreviewWindow::viewport_builder().transparent, Some(false));
+}

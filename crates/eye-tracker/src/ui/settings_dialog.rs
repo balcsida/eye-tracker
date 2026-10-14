@@ -2450,6 +2450,18 @@ impl SettingsDialog {
         egui::ViewportId::from_hash_of("eye-tracker-settings")
     }
 
+    /// The window: titled, opaque, with the app icon.
+    pub fn viewport_builder() -> egui::ViewportBuilder {
+        icons::with_app_icon(
+            egui::ViewportBuilder::default()
+                .with_title(format!("{APP_NAME} Settings"))
+                .with_inner_size([860.0, 640.0])
+                .with_min_inner_size([760.0, 540.0])
+                // Under glow a child viewport left unset inherits the transparent root's flag.
+                .with_transparent(false),
+        )
+    }
+
     /// Draw the dialog in its own window; returns what it asks the controller to do.
     pub fn show(
         &mut self,
@@ -2458,15 +2470,11 @@ impl SettingsDialog {
     ) -> Vec<SettingsAction> {
         self.flush_deferred();
         self.poll_cameras();
-        let builder = icons::with_app_icon(
-            egui::ViewportBuilder::default()
-                .with_title(format!("{APP_NAME} Settings"))
-                .with_inner_size([860.0, 640.0])
-                .with_min_inner_size([760.0, 540.0]),
+        ctx.show_viewport_immediate(
+            Self::viewport_id(),
+            Self::viewport_builder(),
+            |ui, _class| self.draw(ui, inputs),
         );
-        ctx.show_viewport_immediate(Self::viewport_id(), builder, |ui, _class| {
-            self.draw(ui, inputs)
-        });
         if self.detecting {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
