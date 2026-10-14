@@ -1,11 +1,12 @@
 # Bundled face models: licences and provenance
 
-Eye Tracker ships three model files, embedded in the program. They run entirely
-inside the app with the `tract` inference library; no other inference runtime is
-used and nothing is downloaded at run time. `cargo xtask fetch-models` recreates
-and verifies every model file from the upstream sources below (`--check` verifies
-without network access), and `MODEL_FILES` in `vision/backends/mod.rs` pins the
-same checksums.
+Eye Tracker ships three model files, embedded in the program, and on macOS a
+Core ML package derived from one of them (see below).
+They run entirely inside the app with the `tract` inference library, or on macOS
+with Apple's Core ML; nothing is downloaded at run time. `cargo xtask fetch-models`
+recreates and verifies every model file from the upstream sources below (`--check`
+verifies without network access), and `MODEL_FILES` in `vision/backends/mod.rs`
+pins the same checksums.
 
 | File | Size (bytes) | SHA-256 | Licence |
 | --- | ---: | --- | --- |
@@ -19,7 +20,7 @@ own licence (`LICENSE` in the source tree).
 
 | Licence text | Covers | SHA-256 |
 | --- | --- | --- |
-| [`licenses/LICENSE-APACHE-2.0.txt`](licenses/LICENSE-APACHE-2.0.txt) | `face_landmarks_detector.tflite`, `geometry_pipeline_metadata_landmarks.binarypb` | `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30` |
+| [`licenses/LICENSE-APACHE-2.0.txt`](licenses/LICENSE-APACHE-2.0.txt) | `face_landmarks_detector.tflite`, `geometry_pipeline_metadata_landmarks.binarypb`, `FaceLandmarks.mlpackage` | `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30` |
 | [`licenses/LICENSE-YUNET.txt`](licenses/LICENSE-YUNET.txt) | `face_detection_yunet_2023mar.onnx` | `2ad92c7a6eb7aebede4e19f5ec4930c8bd9d614dbb8e75be1f740edae346734c` |
 
 `LICENSE-APACHE-2.0.txt` is the Apache License, Version 2.0, exactly as
@@ -53,6 +54,15 @@ Both files are unmodified members of the official `face_landmarker.task` bundle
 The MediaPipe *runtime* (the `mediapipe` package and `libmediapipe`) is
 deliberately not used: it contains a usage-logging client that uploads to
 Google servers. Only the model weights and geometry data are redistributed.
+
+## Derived: `FaceLandmarks.mlpackage` (Apache-2.0)
+
+`face_landmarks_detector.tflite` above, converted to a Core ML package (ML
+Program, float16 weights) by `tools/coreml/convert.py` in the source tree, so
+that macOS can run it on the Neural Engine. Same network, same inputs and
+outputs; the conversion changes the numeric precision only. It is a derivative
+of the MediaPipe model and is distributed under the same Apache License,
+Version 2.0, with the copyright of Google LLC. Only the macOS build embeds it.
 
 ## YuNet face detector (MIT)
 
