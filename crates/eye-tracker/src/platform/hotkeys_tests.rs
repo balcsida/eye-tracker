@@ -2975,11 +2975,14 @@ mod x11_tests {
         assert!(manager.register("p", "ctrl+shift+p".into(), noop()));
         display.set_xkb_options(&["grp:ctrl_shift_toggle"]);
         display.push(property_event(atom));
-        // Each loop pass runs queued calls, then drains events: after two round trips the pass
-        // that saw the pushed event has finished.
-        for _ in 0..2 {
-            assert!(call_on_thread(&manager.0, || true, false));
+        // Each loop pass runs queued calls, then drains events, and it also runs calls queued
+        // while it runs them, so round trips alone can all finish before the drain. Wait until
+        // the thread took the event; the next call then runs after the pass that handled it.
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while !display.st().events.is_empty() && std::time::Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
         }
+        assert!(call_on_thread(&manager.0, || true, false));
         assert_eq!(
             registered_names(&manager),
             BTreeSet::from(["t".to_string()])
