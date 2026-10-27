@@ -458,6 +458,7 @@ fn fake_repository(dir: &Path) {
     executable(&dir.join("target/release/eye-tracker"), "#!/bin/sh\n");
 }
 
+#[cfg(unix)]
 const FAKE_CURL: &str = r#"#!/bin/sh
 out=""; url=""
 while [ $# -gt 0 ]; do
@@ -475,6 +476,7 @@ case "$url" in
 esac
 "#;
 
+#[cfg(unix)]
 const FAKE_TOOL: &str = r#"#!/bin/sh
 echo "$@" > "$FAKE_TOOL_LOG"
 for last; do :; done
