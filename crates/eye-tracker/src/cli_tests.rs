@@ -254,7 +254,10 @@ fn test_ctl_says_how_to_start_this_copy() {
         "{}",
         outcome.err
     );
-    assert!(expected.contains(&fixture.dirs.path().to_string_lossy().into_owned()));
+    // The profile as the app resolved it: on Windows that also expands 8.3 names such as
+    // RUNNER~1 in the temporary directory.
+    let profile = paths::base_override().expect("profile");
+    assert!(expected.contains(&profile.display().to_string()));
 }
 
 #[test]
