@@ -18,7 +18,10 @@
 //! them (names, task ordering, pins); the behaviour itself runs on the CI machines.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::Command;
 
 use regex::Regex;
@@ -411,6 +414,9 @@ fn test_appimage_tools_are_pinned() {
     assert!(text.contains("refusing to download"));
 }
 
+/// Unix only: the scripts run on macOS and Linux, and on Windows `bash` finds WSL's launcher in
+/// System32 before Git Bash on the PATH.
+#[cfg(unix)]
 fn bash(script: &Path, args: &[&str], dir: &Path, envs: &[(&str, &str)]) -> std::process::Output {
     Command::new("bash")
         .arg(script)
@@ -701,6 +707,7 @@ fn test_make_app_assembles_the_bundle() {
     assert_eq!(plist_value(&plist, "NSHighResolutionCapable"), "true");
 }
 
+#[cfg(unix)]
 #[test]
 fn test_make_app_refuses_what_is_missing() {
     let dir = tempfile::tempdir().unwrap();
@@ -764,6 +771,7 @@ fn test_script_help_prints_the_whole_header() {
 }
 
 // ======================================================================== release notes
+#[cfg(unix)]
 fn release_notes(
     dir: &Path,
     changelog: &str,
@@ -785,12 +793,14 @@ fn release_notes(
     )
 }
 
+#[cfg(unix)]
 fn changelog(unreleased: &str) -> String {
     format!(
         "# Changelog\n\n## [Unreleased]\n{unreleased}\n## [1.2.0] - 2026-10-01\n\n### Fixed\n\n- The fix that 1.2.0 ships.\n\n[Unreleased]: https://github.com/bugraskl/eye-tracker/compare/v1.2.0...HEAD\n[1.2.0]: https://github.com/bugraskl/eye-tracker/releases/tag/v1.2.0\n"
     )
 }
 
+#[cfg(unix)]
 #[test]
 fn test_release_notes_are_the_versions_section() {
     for unreleased in ["", "\n### Added\n\n### Fixed\n"] {
@@ -809,6 +819,7 @@ fn test_release_notes_are_the_versions_section() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn test_release_fails_while_unreleased_has_notes() {
     let dir = tempfile::tempdir().unwrap();
@@ -830,6 +841,7 @@ fn test_release_fails_while_unreleased_has_notes() {
     assert!(!notes.contains("Not moved yet"));
 }
 
+#[cfg(unix)]
 #[test]
 fn test_release_fails_without_a_section_for_the_version() {
     let dir = tempfile::tempdir().unwrap();
