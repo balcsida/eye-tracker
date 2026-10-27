@@ -523,9 +523,9 @@ const OBJC_BUNDLE_LOADERS: &[&str] = &["bundleWithIdentifier", "bundleWithPath",
 pub const MACOS_NETWORK_BUNDLES: &[&str] = &["CFNetwork", "Network", "WebKit"];
 
 const SKIP_DIRS: &[&str] = &[".git", "node_modules", "target", "testing"];
-/// shortcut: test files are recognised by PORTING.md's naming convention (`*_tests.rs`,
-/// `src/testing/`), not by following `#[cfg(test)] mod` declarations; upgrade if the
-/// convention ever changes.
+/// shortcut: test files are recognised by the naming convention in docs/architecture.md
+/// (`*_tests.rs`, `src/testing/`), not by following `#[cfg(test)] mod` declarations; upgrade
+/// if the convention ever changes.
 const TEST_FILE_SUFFIX: &str = "_tests.rs";
 static SHELL_WORD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"[^\s;&|()`'"<>$]+"#).unwrap());
 
