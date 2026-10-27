@@ -37,9 +37,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Known gaps
 
-- The Rust version has not yet been run on a real Windows machine or a real Linux desktop; it is
-  tested by its automated tests, on macOS, and by type-checking the Windows build and building the
-  Linux build in a container.
+- The Rust version has only been used on macOS so far, not yet on a Windows machine or a Linux
+  desktop; its automated tests pass on Windows, macOS and Linux in CI.
 - The application icons are redrawn by the Rust renderer, so they are not pixel-identical to the
   earlier ones.
 - Clicking a notification does nothing yet (the notification library reports no clicks), so the
