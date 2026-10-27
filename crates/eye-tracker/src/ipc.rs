@@ -1134,7 +1134,9 @@ mod winsec {
     use interprocess::os::windows::security_descriptor::{
         AsSecurityDescriptorExt, BorrowedSecurityDescriptor, SecurityDescriptor,
     };
-    use windows::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, HLOCAL, LocalFree};
+    use windows::Win32::Foundation::{
+        CloseHandle, ERROR_LOCK_VIOLATION, GetLastError, HANDLE, HLOCAL, LocalFree,
+    };
     use windows::Win32::Security::Authorization::{
         ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
     };
@@ -1152,8 +1154,6 @@ mod winsec {
 
     use super::{PIPE_NAME_POLL, PIPE_PREFIX};
 
-    /// `GetLastError` of `LockFile` on a range somebody else locked.
-    const ERROR_LOCK_VIOLATION: i32 = 33;
     /// `WaitNamedPipeW` results (`GetLastError`) that tell whether a pipe name exists.
     const ERROR_FILE_NOT_FOUND: u32 = 2;
     const ERROR_SEM_TIMEOUT: u32 = 121; // the name exists, but no instance is waiting for a client
@@ -1177,14 +1177,10 @@ mod winsec {
         // SAFETY: the handle is open for the duration of the call.
         match unsafe { LockFile(handle_of(file), 0, 0, 1, 0) } {
             Ok(()) => Ok(true),
-            Err(err) => {
-                let err = io::Error::from(err);
-                if err.raw_os_error() == Some(ERROR_LOCK_VIOLATION) {
-                    Ok(false)
-                } else {
-                    Err(err)
-                }
-            }
+            // A range somebody else locked. windows-rs errors carry an HRESULT, which converting
+            // to io::Error keeps as the raw code, so compare before converting.
+            Err(err) if err.code() == ERROR_LOCK_VIOLATION.to_hresult() => Ok(false),
+            Err(err) => Err(io::Error::from(err)),
         }
     }
 
