@@ -1520,9 +1520,12 @@ mod sni {
     /// The status dot as a PNG (what DBusMenu takes as an item icon).
     fn dot_png(dot: &crate::ui::icons::Rgba) -> Option<Vec<u8>> {
         let mut pixmap = tiny_skia::Pixmap::new(dot.width, dot.height)?;
-        for (pixel, rgba) in pixmap.pixels_mut().iter_mut().zip(dot.data.chunks_exact(4)) {
-            *pixel =
-                tiny_skia::ColorU8::from_rgba(rgba[0], rgba[1], rgba[2], rgba[3]).premultiply();
+        for (pixel, [r, g, b, a]) in pixmap
+            .pixels_mut()
+            .iter_mut()
+            .zip(dot.data.as_chunks::<4>().0)
+        {
+            *pixel = tiny_skia::ColorU8::from_rgba(*r, *g, *b, *a).premultiply();
         }
         pixmap.encode_png().ok()
     }
