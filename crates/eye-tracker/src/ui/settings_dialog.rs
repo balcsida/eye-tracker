@@ -676,6 +676,8 @@ impl Editor {
                 let wanted = text();
                 *index = match options.iter().position(|(v, _)| *v == wanted) {
                     Some(found) => found,
+                    // Settings may contain a value unknown to this UI version (or not offered on
+                    // this system, like the apple backend); keep it selectable.
                     None => {
                         options.push((wanted.clone(), wanted));
                         options.len() - 1
@@ -1369,16 +1371,10 @@ impl SettingsDialog {
         label: &'static str,
         options: &[(&str, &str)],
     ) -> &'static str {
-        let mut options: Vec<(String, String)> = options
+        let options: Vec<(String, String)> = options
             .iter()
             .map(|(v, t)| ((*v).to_string(), (*t).to_string()))
             .collect();
-        // Settings may contain a value unknown to this UI version; keep it selectable.
-        for value in meta(key).map_or(&[][..], |row| row.choices) {
-            if !options.iter().any(|(v, _)| v == value) {
-                options.push(((*value).to_string(), (*value).to_string()));
-            }
-        }
         self.register(key, "", None, Editor::Combo { options, index: 0 });
         rows.push(Row::Field {
             key,

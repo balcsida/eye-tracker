@@ -951,6 +951,19 @@ fn test_backend_choices_are_the_opencv_backends() {
     assert!(!labels.contains("OpenCV"));
 }
 
+/// A backend this system does not offer (apple, in settings from a Mac) is shown as it is and
+/// kept when something else changes.
+#[test]
+fn test_a_backend_not_offered_here_stays_selected() {
+    let mut s = Settings::default();
+    s.general.backend = "apple".into();
+    let mut e = env_for(s);
+    assert_eq!(e.dialog.current("general.backend").0, "apple");
+    e.dialog.set_checked("general.notifications", false);
+    assert!(e.apply());
+    assert_eq!(e.last_applied().general.backend, "apple");
+}
+
 /// Regression (ui_app-02): a second OK must retry, not accept the failed state.
 #[test]
 fn test_failed_start_at_login_change_stays_pending() {
