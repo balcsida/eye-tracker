@@ -3009,6 +3009,10 @@ mod x11_tests {
 mod windows_live {
     use super::*;
 
+    /// The tests register the same system-wide combinations, which one thread at a time can hold,
+    /// so they must not overlap.
+    static LIVE_LOCK: Mutex<()> = Mutex::new(());
+
     fn post_hotkey(manager: &WindowsHotkeyManager, name: &str) {
         // Deliver WM_HOTKEY to the manager's own thread (no input is synthesised).
         let id = manager.0.core.table.lock().bindings[name].id;
@@ -3033,6 +3037,7 @@ mod windows_live {
 
     #[test]
     fn test_windows_live_register_dispatch_and_stop() {
+        let _live = LIVE_LOCK.lock();
         let win = WindowsHotkeyManager::new();
         let fired = Arc::new(Event::default());
         let threads = Arc::new(Mutex::new(Vec::new()));
@@ -3060,6 +3065,7 @@ mod windows_live {
 
     #[test]
     fn test_windows_double_registration() {
+        let _live = LIVE_LOCK.lock();
         let win = WindowsHotkeyManager::new();
         let fired = Arc::new(Mutex::new(Vec::new()));
         let done = Arc::new(Event::default());
@@ -3079,6 +3085,7 @@ mod windows_live {
 
     #[test]
     fn test_windows_combo_taken_by_another_owner() {
+        let _live = LIVE_LOCK.lock();
         let (first, second) = (WindowsHotkeyManager::new(), WindowsHotkeyManager::new());
         assert!(first.register("t", COMBO.into(), noop()));
         // The OS refuses a combination that another thread/app already registered.
@@ -3094,6 +3101,7 @@ mod windows_live {
 
     #[test]
     fn test_windows_unregister_releases_os_registration() {
+        let _live = LIVE_LOCK.lock();
         let win = WindowsHotkeyManager::new();
         let other = WindowsHotkeyManager::new();
         assert!(win.register("t", COMBO.into(), noop()));
@@ -3105,6 +3113,7 @@ mod windows_live {
 
     #[test]
     fn test_windows_callback_may_register_and_stop() {
+        let _live = LIVE_LOCK.lock();
         let win = Arc::new(WindowsHotkeyManager::new());
         let results = Arc::new(Mutex::new(Vec::new()));
         let done = Arc::new(Event::default());
@@ -3139,6 +3148,7 @@ mod windows_live {
 
     #[test]
     fn test_windows_callback_exception_keeps_thread_alive() {
+        let _live = LIVE_LOCK.lock();
         let win = WindowsHotkeyManager::new();
         let done = Arc::new(Event::default());
         let event = done.clone();
@@ -3164,6 +3174,7 @@ mod windows_live {
     fn test_windows_altgr_collision_is_refused_before_registering() {
         // A layout on which even AltGr+Shift+F24 would type: the manager must refuse it without
         // calling RegisterHotKey, so another owner can still take the combo.
+        let _live = LIVE_LOCK.lock();
         let refusing = WindowsHotkeyManager::with_layout_probe(Some(Arc::new(
             FakeLayoutProbe::everything("x"),
         )));
