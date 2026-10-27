@@ -715,11 +715,23 @@ fn core_ml_engine(dir: &std::path::Path) -> LandmarkEngine {
 
 /// The embedded package compiles into the cache, passes the self-test with tract's
 /// tolerances, and is reused (or compiled again when the cached copy is broken) on later loads.
+///
+/// A virtual machine (such as a CI runner) gives Core ML only the CPU, whose float16 path misses
+/// the self-test's synthetic blob by about 18 px while faces stay within 1 px (see
+/// `test_core_ml_matches_tract`); the app then uses tract, so there only compiling and caching are
+/// checked.
 #[cfg(target_os = "macos")]
 #[test]
 fn test_core_ml_engine_compiles_and_passes_the_self_test() {
     let dir = tempfile::tempdir().unwrap();
-    check_landmark_net(&core_ml_engine(dir.path())).unwrap();
+    let self_test = !in_virtual_machine();
+    let load_and_check = || {
+        let engine = core_ml_engine(dir.path());
+        if self_test {
+            check_landmark_net(&engine).unwrap();
+        }
+    };
+    load_and_check();
     let cached: Vec<_> = std::fs::read_dir(dir.path().join("coreml"))
         .unwrap()
         .collect();
@@ -735,11 +747,29 @@ fn test_core_ml_engine_compiles_and_passes_the_self_test() {
     let compiled = model_dir.join("FaceLandmarks.mlmodelc");
     assert!(compiled.is_dir());
 
-    check_landmark_net(&core_ml_engine(dir.path())).unwrap();
+    load_and_check();
 
     std::fs::remove_dir_all(&compiled).unwrap();
     std::fs::create_dir(&compiled).unwrap();
-    check_landmark_net(&core_ml_engine(dir.path())).unwrap();
+    load_and_check();
+}
+
+/// Whether this Mac is a virtual machine (`sysctl kern.hv_vmm_present`).
+#[cfg(target_os = "macos")]
+fn in_virtual_machine() -> bool {
+    let mut present: libc::c_int = 0;
+    let mut size = std::mem::size_of::<libc::c_int>();
+    // SAFETY: a NUL-terminated name and an out buffer of the size passed in.
+    let read = unsafe {
+        libc::sysctlbyname(
+            c"kern.hv_vmm_present".as_ptr(),
+            (&raw mut present).cast(),
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    read == 0 && present == 1
 }
 
 /// Core ML computes in float16 on the Neural Engine: measured against tract, about 0.2 px on
