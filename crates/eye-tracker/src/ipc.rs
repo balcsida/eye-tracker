@@ -824,7 +824,7 @@ fn refusal_level(previous_refusals: usize) -> log::Level {
 /// One client connection: buffers the request line and sends a single reply.
 fn serve(stream: Stream, shared: &Shared) {
     let deadline = Instant::now() + shared.idle_timeout;
-    if stream.set_nonblocking(true).is_err() {
+    if start_polling(&stream).is_err() {
         return;
     }
     let mut buffer = Vec::new();
@@ -833,7 +833,7 @@ fn serve(stream: Stream, shared: &Shared) {
         if shared.stop.load(Ordering::SeqCst) {
             return;
         }
-        match (&stream).read(&mut chunk) {
+        match read_ready(&stream, &mut chunk) {
             Ok(0) => return,
             Ok(n) => {
                 buffer.extend_from_slice(&chunk[..n]);
@@ -927,9 +927,33 @@ fn respond(stream: &Stream, text: &str) {
         return;
     }
     // Unread request bytes would make closing reset the connection and could lose the reply.
-    let _ = stream.set_nonblocking(true);
+    let _ = start_polling(stream);
     let mut sink = [0u8; 512];
-    while matches!((&*stream).read(&mut sink), Ok(n) if n > 0) {}
+    while matches!(read_ready(stream, &mut sink), Ok(n) if n > 0) {}
+}
+
+/// Make [`read_ready`] on `stream` return instead of waiting for data.
+fn start_polling(stream: &Stream) -> io::Result<()> {
+    // Windows: interprocess reports a non-blocking pipe read with nothing to read as the end of
+    // the stream, so the pipe stays blocking and `read_ready` looks before it reads.
+    if cfg!(windows) {
+        Ok(())
+    } else {
+        stream.set_nonblocking(true)
+    }
+}
+
+/// Read what has arrived, or fail with `WouldBlock` when nothing has (after [`start_polling`]).
+fn read_ready(stream: &Stream, buf: &mut [u8]) -> io::Result<usize> {
+    #[cfg(windows)]
+    let buf = match winsec::bytes_waiting(stream)? {
+        0 => return Err(io::ErrorKind::WouldBlock.into()),
+        waiting => {
+            let len = buf.len().min(waiting as usize);
+            &mut buf[..len]
+        }
+    };
+    (&*stream).read(buf)
 }
 
 // ---------------------------------------------------------------------- client
@@ -961,13 +985,13 @@ fn exchange(
         .write_all(request)
         .and_then(|()| writer.flush())
         .is_err()
-        || stream.set_nonblocking(true).is_err()
+        || start_polling(&stream).is_err()
     {
         return (true, buffer);
     }
     let mut chunk = [0u8; 4096];
     while Instant::now() < deadline {
-        match (&stream).read(&mut chunk) {
+        match read_ready(&stream, &mut chunk) {
             Ok(0) => break,
             Ok(n) => {
                 buffer.extend_from_slice(&chunk[..n]);
@@ -1120,16 +1144,16 @@ mod winsec {
 
 #[cfg(windows)]
 mod winsec {
-    //! Windows: byte-range lock, account checks through process tokens, pipe name squatting and
-    //! the foreground hand-off.
+    //! Windows: byte-range lock, account checks through process tokens, pipe name squatting,
+    //! peeking into pipes and the foreground hand-off.
 
     use std::fs::File;
     use std::io;
-    use std::os::windows::io::AsRawHandle;
+    use std::os::windows::io::{AsHandle, AsRawHandle};
     use std::sync::OnceLock;
     use std::time::{Duration, Instant};
 
-    use interprocess::local_socket::ListenerOptions;
+    use interprocess::local_socket::{ListenerOptions, Stream};
     use interprocess::os::windows::local_socket::ListenerOptionsExt;
     use interprocess::os::windows::security_descriptor::{
         AsSecurityDescriptorExt, BorrowedSecurityDescriptor, SecurityDescriptor,
@@ -1145,7 +1169,7 @@ mod winsec {
         TokenUser,
     };
     use windows::Win32::Storage::FileSystem::{LockFile, UnlockFile};
-    use windows::Win32::System::Pipes::WaitNamedPipeW;
+    use windows::Win32::System::Pipes::{PeekNamedPipe, WaitNamedPipeW};
     use windows::Win32::System::Threading::{
         GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
     };
@@ -1182,6 +1206,25 @@ mod winsec {
             Err(err) if err.code() == ERROR_LOCK_VIOLATION.to_hresult() => Ok(false),
             Err(err) => Err(io::Error::from(err)),
         }
+    }
+
+    /// How many bytes wait to be read on `stream`'s pipe.
+    pub fn bytes_waiting(stream: &Stream) -> io::Result<u32> {
+        let Stream::NamedPipe(pipe) = stream;
+        let mut waiting = 0u32;
+        // SAFETY: the handle is open for the duration of the call and `waiting` outlives it.
+        unsafe {
+            PeekNamedPipe(
+                HANDLE(pipe.as_handle().as_raw_handle()),
+                None,
+                0,
+                None,
+                Some(&mut waiting),
+                None,
+            )
+        }
+        .map_err(io::Error::from)?;
+        Ok(waiting)
     }
 
     pub fn unlock_first_byte(file: &File) -> io::Result<()> {
